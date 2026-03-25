@@ -1,0 +1,81 @@
+name: Release Andromeda Mod
+
+on:
+  push:
+    tags:
+      - '*.*.*'
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      PROJECT_PATH: ./Andromeda.Mod.csproj
+      GAME_MANAGED_DIR: C:\Program Files (x86)\Steam\steamapps\common\EnemyOnBoard\enemy-on-board_Data\Managed
+      MELONLOADER_NET35_DIR: C:\Program Files (x86)\Steam\steamapps\common\EnemyOnBoard\MelonLoader\net35
+      GAME_MANAGED_ZIP_URL: ${{ secrets.ANDROMEDA_GAME_MANAGED_ZIP_URL }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup dotnet
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Prepare external dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          New-Item -ItemType Directory -Path "$env:GAME_MANAGED_DIR" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$env:MELONLOADER_NET35_DIR" -Force | Out-Null
+
+          if ([string]::IsNullOrWhiteSpace($env:GAME_MANAGED_ZIP_URL)) {
+            throw "Missing secret ANDROMEDA_GAME_MANAGED_ZIP_URL. Set it to a zip containing EnemyOnBoard Managed DLLs (including Assembly-CSharp-Publicized.dll)."
+          }
+
+          $managedZip = Join-Path $env:RUNNER_TEMP 'managed.zip'
+          Invoke-WebRequest -Uri $env:GAME_MANAGED_ZIP_URL -OutFile $managedZip
+          Expand-Archive -Path $managedZip -DestinationPath "$env:GAME_MANAGED_DIR" -Force
+
+          $mlApi = 'https://api.github.com/repos/LavaGang/MelonLoader/releases/latest'
+          $mlRelease = Invoke-RestMethod -Headers @{ 'User-Agent' = 'andromeda-mod-cd' } -Uri $mlApi
+          $mlZip = $mlRelease.assets | Where-Object { $_.name -match '\\.zip$' } | Select-Object -First 1
+          if ($null -eq $mlZip) {
+            throw 'Could not find a MelonLoader zip asset in latest release.'
+          }
+
+          $mlZipPath = Join-Path $env:RUNNER_TEMP 'melonloader.zip'
+          Invoke-WebRequest -Uri $mlZip.browser_download_url -OutFile $mlZipPath
+          $mlExtract = Join-Path $env:RUNNER_TEMP 'melonloader'
+          Expand-Archive -Path $mlZipPath -DestinationPath $mlExtract -Force
+
+          foreach ($dll in @('MelonLoader.dll', '0Harmony.dll', 'Newtonsoft.Json.dll')) {
+            $source = Get-ChildItem -Path $mlExtract -Filter $dll -Recurse | Select-Object -First 1
+            if ($null -eq $source) {
+              throw "Missing $dll in MelonLoader package"
+            }
+
+            Copy-Item -Path $source.FullName -Destination (Join-Path $env:MELONLOADER_NET35_DIR $dll) -Force
+          }
+
+          if (-not (Test-Path (Join-Path $env:GAME_MANAGED_DIR 'Assembly-CSharp-Publicized.dll'))) {
+            throw 'Assembly-CSharp-Publicized.dll not found in managed dependency zip.'
+          }
+
+      - name: Build Release
+        run: dotnet msbuild "$env:PROJECT_PATH" /t:Build /p:Configuration=Release /nologo
+
+      - name: Package release asset
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path out -Force | Out-Null
+          Copy-Item bin/Release/Andromeda.Mod.dll out/Andromeda.Mod.dll -Force
+          Compress-Archive -Path out/Andromeda.Mod.dll -DestinationPath out/Andromeda.Mod.zip -Force
+
+      - name: Upload GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            out/Andromeda.Mod.dll
+            out/Andromeda.Mod.zip
