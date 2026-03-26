@@ -1,7 +1,6 @@
 using System;
 using HarmonyLib;
 using MelonLoader;
-using UniRx.Async;
 using UnityEngine.Networking;
 
 namespace Andromeda.Mod.Patches
@@ -12,17 +11,20 @@ namespace Andromeda.Mod.Patches
         private static DateTime _nextPromptUtc = DateTime.MinValue;
 
         [HarmonyPostfix]
-        public static void Postfix(UnityWebRequest request, ref ApiShared.Response __result)
+        public static void Postfix(UnityWebRequest request)
         {
             try
             {
-                if (request == null || __result == null)
+                if (request == null)
                     return;
 
                 if (!IsMatchmakingEndpoint(request.url))
                     return;
 
-                if (!LooksLikeWarmupState(__result.status, __result.message))
+                int statusCode = (int)request.responseCode;
+                string message = request.downloadHandler?.text ?? string.Empty;
+
+                if (!LooksLikeWarmupState(statusCode, message))
                     return;
 
                 var now = DateTime.UtcNow;
@@ -30,7 +32,9 @@ namespace Andromeda.Mod.Patches
                     return;
 
                 _nextPromptUtc = now.AddSeconds(20);
-                Dialog.Prompt("Please wait a little, servers are booting.").Forget<bool>();
+
+                // Avoid generic async helper calls here: Harmony dynamic IL emit can fail on some generic imports.
+                _ = Dialog.Prompt("Please wait a little, servers are booting.");
             }
             catch (Exception ex)
             {
@@ -50,9 +54,9 @@ namespace Andromeda.Mod.Patches
                    || url.IndexOf("/match/start", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
-        private static bool LooksLikeWarmupState(int status, string message)
+        private static bool LooksLikeWarmupState(int statusCode, string message)
         {
-            if (status == 200)
+            if (statusCode == 200)
                 return false;
 
             string text = (message ?? string.Empty).Trim();
@@ -69,7 +73,7 @@ namespace Andromeda.Mod.Patches
                                  || lower.Contains("try again");
 
             // Only trigger for expected transient states.
-            bool isTransientStatus = status == 425 || status == 429 || status == 503 || status == 504;
+            bool isTransientStatus = statusCode == 425 || statusCode == 429 || statusCode == 503 || statusCode == 504;
             return hasWarmupHint || isTransientStatus;
         }
     }

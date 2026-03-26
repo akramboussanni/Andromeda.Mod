@@ -123,10 +123,10 @@ namespace Andromeda.Mod
         public static void LoadSettingsEarly()
         {
             // Force override on first launch of this patch version (incremented to version 3)
-            if (PlayerPrefs.GetInt("Andromeda_Version", 0) < 7)
+            if (PlayerPrefs.GetInt("Andromeda_Version", 0) < 8)
             {
-                PlayerPrefs.SetString("Andromeda_ApiUrl", "https://Andromeda2.mrie.dev");
-                PlayerPrefs.SetInt("Andromeda_Version", 7);
+                PlayerPrefs.SetString("Andromeda_ApiUrl", "https://parasite2.mrie.dev");
+                PlayerPrefs.SetInt("Andromeda_Version", 8);
                 PlayerPrefs.Save();
             }
 
@@ -141,7 +141,7 @@ namespace Andromeda.Mod
 
         private static string FixUrl(string url)
         {
-            if (string.IsNullOrEmpty(url)) return "https://Andromeda2.mrie.dev";
+            if (string.IsNullOrEmpty(url)) return "https://parasite2.mrie.dev";
             
             string sanitized = url.Trim().TrimEnd('/');
             

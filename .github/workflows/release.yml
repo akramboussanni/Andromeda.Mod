@@ -95,11 +95,9 @@ jobs:
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Path out -Force | Out-Null
           Copy-Item bin/Release/Andromeda.Mod.dll out/Andromeda.Mod.dll -Force
-          Compress-Archive -Path out/Andromeda.Mod.dll -DestinationPath out/Andromeda.Mod.zip -Force
 
       - name: Upload GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             out/Andromeda.Mod.dll
-            out/Andromeda.Mod.zip
