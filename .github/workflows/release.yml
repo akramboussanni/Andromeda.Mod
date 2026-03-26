@@ -42,25 +42,41 @@ jobs:
           Invoke-WebRequest -Uri $env:GAME_MANAGED_ZIP_URL -Headers $managedZipHeaders -OutFile $managedZip
           Expand-Archive -Path $managedZip -DestinationPath "$env:GAME_MANAGED_DIR" -Force
 
-          $mlApi = 'https://api.github.com/repos/LavaGang/MelonLoader/releases/latest'
-          $mlRelease = Invoke-RestMethod -Headers @{ 'User-Agent' = 'andromeda-mod-cd' } -Uri $mlApi
-          $mlZip = $mlRelease.assets | Where-Object { $_.name -match '\\.zip$' } | Select-Object -First 1
-          if ($null -eq $mlZip) {
-            throw 'Could not find a MelonLoader zip asset in latest release.'
+          $melonDlls = @('MelonLoader.dll', '0Harmony.dll', 'Newtonsoft.Json.dll')
+          $missingMelonDlls = @()
+
+          # Prefer DLLs already supplied in the managed dependency zip.
+          foreach ($dll in $melonDlls) {
+            $source = Get-ChildItem -Path $env:GAME_MANAGED_DIR -Filter $dll -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($null -ne $source) {
+              Copy-Item -Path $source.FullName -Destination (Join-Path $env:MELONLOADER_NET35_DIR $dll) -Force
+            } else {
+              $missingMelonDlls += $dll
+            }
           }
 
-          $mlZipPath = Join-Path $env:RUNNER_TEMP 'melonloader.zip'
-          Invoke-WebRequest -Uri $mlZip.browser_download_url -OutFile $mlZipPath
-          $mlExtract = Join-Path $env:RUNNER_TEMP 'melonloader'
-          Expand-Archive -Path $mlZipPath -DestinationPath $mlExtract -Force
-
-          foreach ($dll in @('MelonLoader.dll', '0Harmony.dll', 'Newtonsoft.Json.dll')) {
-            $source = Get-ChildItem -Path $mlExtract -Filter $dll -Recurse | Select-Object -First 1
-            if ($null -eq $source) {
-              throw "Missing $dll in MelonLoader package"
+          # Fallback: fetch MelonLoader release only for still-missing DLLs.
+          if ($missingMelonDlls.Count -gt 0) {
+            $mlApi = 'https://api.github.com/repos/LavaGang/MelonLoader/releases/latest'
+            $mlRelease = Invoke-RestMethod -Headers @{ 'User-Agent' = 'andromeda-mod-cd' } -Uri $mlApi
+            $mlZip = $mlRelease.assets | Where-Object { $_.name -match '\.zip$' -or $_.browser_download_url -match '\.zip$' } | Select-Object -First 1
+            if ($null -eq $mlZip) {
+              throw 'Could not find a MelonLoader zip asset in latest release, and required DLLs were not present in managed dependencies.'
             }
 
-            Copy-Item -Path $source.FullName -Destination (Join-Path $env:MELONLOADER_NET35_DIR $dll) -Force
+            $mlZipPath = Join-Path $env:RUNNER_TEMP 'melonloader.zip'
+            Invoke-WebRequest -Uri $mlZip.browser_download_url -OutFile $mlZipPath
+            $mlExtract = Join-Path $env:RUNNER_TEMP 'melonloader'
+            Expand-Archive -Path $mlZipPath -DestinationPath $mlExtract -Force
+
+            foreach ($dll in $missingMelonDlls) {
+              $source = Get-ChildItem -Path $mlExtract -Filter $dll -Recurse | Select-Object -First 1
+              if ($null -eq $source) {
+                throw "Missing $dll in MelonLoader package"
+              }
+
+              Copy-Item -Path $source.FullName -Destination (Join-Path $env:MELONLOADER_NET35_DIR $dll) -Force
+            }
           }
 
           if (-not (Test-Path (Join-Path $env:GAME_MANAGED_DIR 'Assembly-CSharp-Publicized.dll'))) {
