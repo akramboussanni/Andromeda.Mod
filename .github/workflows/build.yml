@@ -15,6 +15,7 @@ jobs:
       GAME_MANAGED_DIR: C:\Program Files (x86)\Steam\steamapps\common\EnemyOnBoard\enemy-on-board_Data\Managed
       MELONLOADER_NET35_DIR: C:\Program Files (x86)\Steam\steamapps\common\EnemyOnBoard\MelonLoader\net35
       GAME_MANAGED_ZIP_URL: ${{ secrets.ANDROMEDA_GAME_MANAGED_ZIP_URL }}
+      GAME_MANAGED_ZIP_TOKEN: ${{ secrets.ANDROMEDA_GAME_MANAGED_ZIP_TOKEN }}
     steps:
       - uses: actions/checkout@v5
 
@@ -36,7 +37,11 @@ jobs:
           }
 
           $managedZip = Join-Path $env:RUNNER_TEMP 'managed.zip'
-          Invoke-WebRequest -Uri $env:GAME_MANAGED_ZIP_URL -OutFile $managedZip
+          $managedZipHeaders = @{ 'User-Agent' = 'andromeda-mod-ci' }
+          if (-not [string]::IsNullOrWhiteSpace($env:GAME_MANAGED_ZIP_TOKEN)) {
+            $managedZipHeaders['Authorization'] = "Bearer $env:GAME_MANAGED_ZIP_TOKEN"
+          }
+          Invoke-WebRequest -Uri $env:GAME_MANAGED_ZIP_URL -Headers $managedZipHeaders -OutFile $managedZip
           Expand-Archive -Path $managedZip -DestinationPath "$env:GAME_MANAGED_DIR" -Force
 
           $mlApi = 'https://api.github.com/repos/LavaGang/MelonLoader/releases/latest'

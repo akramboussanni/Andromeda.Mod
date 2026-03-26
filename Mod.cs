@@ -78,6 +78,7 @@ namespace Andromeda.Mod
             ManualPatch(harmony, typeof(AnalyticsPatch), "Analytics Skip");
             ManualPatch(harmony, typeof(SteamPatch), "Steam Bypass");
             ManualPatch(harmony, typeof(ApiSharedPatch), "API Auth Bypass");
+            ManualPatch(harmony, typeof(ApiWarmupMessagePatch), "Server Warmup UX Message");
             ManualPatch(harmony, typeof(UserStorePatch), "Profile Storage");
             ManualPatch(harmony, typeof(ProgramServerPatch), "Server Logic");
             ManualPatch(harmony, typeof(LobbyServerPatch), "Lobby Logic");
