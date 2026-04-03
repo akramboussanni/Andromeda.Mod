@@ -40,6 +40,9 @@ namespace Andromeda.Mod
             ApiData.OnReload += CryonautModelFix.ApplyToApiData;
             CryonautModelFix.ApplyToApiData();
 
+            if (!DedicatedServerStartup.IsServer)
+                Features.UpdateChecker.CheckAsync();
+
             //PerkFeatures.SwapPerkSprites();
         }
 
@@ -130,7 +133,11 @@ namespace Andromeda.Mod
             DedicatedServerStartup.Update();
         }
 
-        public override void OnGUI() { NetworkDebugger.OnGUI(); }
+        public override void OnGUI()
+        {
+            NetworkDebugger.OnGUI();
+            Features.UpdateChecker.OnGUI();
+        }
 
         public override void OnApplicationQuit()
         {
