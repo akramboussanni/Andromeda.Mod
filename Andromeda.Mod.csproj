@@ -476,6 +476,7 @@
         <Compile Include="Patches\LogRedirectPatch.cs" />
         <Compile Include="Patches\MiscPatches.cs" />
         <Compile Include="Patches\ApiWarmupMessagePatch.cs" />
+        <Compile Include="Patches\WarmupJoinFallbackPatch.cs" />
         <Compile Include="Patches\NetworkPatches.cs" />
         <Compile Include="Patches\GameSessionPatches.cs" />
         <Compile Include="Properties\AssemblyInfo.cs" />

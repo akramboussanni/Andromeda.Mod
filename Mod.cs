@@ -78,7 +78,7 @@ namespace Andromeda.Mod
             ManualPatch(harmony, typeof(AnalyticsPatch), "Analytics Skip");
             ManualPatch(harmony, typeof(SteamPatch), "Steam Bypass");
             ManualPatch(harmony, typeof(ApiSharedPatch), "API Auth Bypass");
-            MelonLogger.Warning("[PATCH] Server Warmup UX Message - DISABLED");
+            MelonLogger.Warning("[PATCH] Server Warmup UX Message - DISABLED (generic ParseResponse patch is unstable on this runtime)");
             ManualPatch(harmony, typeof(UserStorePatch), "Profile Storage");
             ManualPatch(harmony, typeof(ProgramServerPatch), "Server Logic");
             ManualPatch(harmony, typeof(LobbyServerPatch), "Lobby Logic");
@@ -86,6 +86,9 @@ namespace Andromeda.Mod
             ManualPatch(harmony, typeof(EnvironmentPatch), "Env Identity");
             ManualPatch(harmony, typeof(ApiClientPartyJoinPatch), "REST Trace");
             ManualPatch(harmony, typeof(ProgramClientConnectPatch), "Connection Logic");
+            ManualPatch(harmony, typeof(ProgramClientPartyCreateWarmupFallbackPatch), "PartyCreate Warmup Fallback");
+            ManualPatch(harmony, typeof(ProgramClientJoinWarmupStopOn503Patch), "Join 503 Warmup Guard");
+            ManualPatch(harmony, typeof(ProgramClientHostWarmupFallbackPatch), "Host Warmup Fallback");
             ManualPatch(harmony, typeof(ProgramClientProbePatch), "Client Boot/Join Probe");
             ManualPatch(harmony, typeof(MainMenuTransitionProbePatch), "MainMenu JoinMatch Probe");
             ManualPatch(harmony, typeof(EntityBaseSendReliablePatch), "Base Msg Reroute (Reliable)");

@@ -5,12 +5,10 @@ using UnityEngine.Networking;
 
 namespace Andromeda.Mod.Patches
 {
-    [HarmonyPatch(typeof(ApiShared), "ParseResponse")]
     public static class ApiWarmupMessagePatch
     {
         private static DateTime _nextPromptUtc = DateTime.MinValue;
 
-        [HarmonyPostfix]
         public static void Postfix(UnityWebRequest request)
         {
             try
