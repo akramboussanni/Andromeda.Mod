@@ -462,6 +462,7 @@
         </Reference>
     </ItemGroup>
     <ItemGroup>
+        <Compile Include="Features\UpdateChecker.cs" />
         <Compile Include="Features\UPnPFeature.cs" />
         <Compile Include="Mod.cs" />
         <Compile Include="BuildInfo.cs" />

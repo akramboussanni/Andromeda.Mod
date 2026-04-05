@@ -89,15 +89,15 @@ namespace Andromeda.Mod.Features
 
             // Check stable first; only proceed to bleeding-edge if stable is up to date
             bool stableOutdated = false;
-            yield return CheckCoro(StableApiUrl, "stable", isStable: true, wasOutdated: out stableOutdated);
+            yield return CheckCoro(StableApiUrl, "stable", true, (result) => stableOutdated = result);
 
             if (!stableOutdated)
-                yield return CheckCoro(BleedingEdgeApiUrl, "bleeding-edge", isStable: false, wasOutdated: out _);
+                yield return CheckCoro(BleedingEdgeApiUrl, "bleeding-edge", false, null);
         }
 
-        private static IEnumerator CheckCoro(string apiUrl, string channel, bool isStable, out bool wasOutdated)
+        private static IEnumerator CheckCoro(string apiUrl, string channel, bool isStable, Action<bool> onResult)
         {
-            wasOutdated = false;
+            bool wasOutdated = false;
 
             var req = UnityWebRequest.Get(apiUrl);
             req.SetRequestHeader("User-Agent", "Andromeda.Mod/" + BuildInfo.Version);
@@ -106,6 +106,7 @@ namespace Andromeda.Mod.Features
             if (req.isNetworkError || req.isHttpError)
             {
                 MelonLogger.Warning($"[UPDATE] Could not check {channel} releases: {req.error}");
+                onResult?.Invoke(wasOutdated);
                 yield break;
             }
 
@@ -117,17 +118,22 @@ namespace Andromeda.Mod.Features
             catch (Exception e)
             {
                 MelonLogger.Warning($"[UPDATE] Failed to parse {channel} release JSON: {e.Message}");
+                onResult?.Invoke(wasOutdated);
                 yield break;
             }
 
             if (release == null || string.IsNullOrEmpty(release.tag_name))
+            {
+                onResult?.Invoke(wasOutdated);
                 yield break;
+            }
 
             string remoteTag = release.tag_name.TrimStart('v');
-            if (!Version.TryParse(remoteTag, out Version remote) ||
-                !Version.TryParse(BuildInfo.Version, out Version local))
+            if (!System.Version.TryParse(remoteTag, out System.Version remote) ||
+                !System.Version.TryParse(BuildInfo.Version, out System.Version local))
             {
                 MelonLogger.Warning($"[UPDATE] Could not compare versions: local={BuildInfo.Version} remote={release.tag_name} channel={channel}");
+                onResult?.Invoke(wasOutdated);
                 yield break;
             }
 
@@ -153,6 +159,8 @@ namespace Andromeda.Mod.Features
             {
                 MelonLogger.Msg($"[UPDATE] {channel}: up to date (v{BuildInfo.Version})");
             }
+            
+            onResult?.Invoke(wasOutdated);
         }
 
         private class ReleaseInfo
