@@ -10,6 +10,7 @@ using UnityEngine;
 namespace Andromeda.Mod.Patches
 {
     // NO CLASS ATTRIBUTE - We use ManualPatch in Mod.cs
+    [HarmonyPatch]
     public static class UserStorePatch
     {
         [HarmonyPatch(typeof(UserStore), "AddAll")]

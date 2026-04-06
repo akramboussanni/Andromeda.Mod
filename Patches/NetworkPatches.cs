@@ -6,6 +6,7 @@ using System;
 using System.IO;
 using System.Diagnostics;
 using UnityEngine;
+using UniRx.Async;
 using Windwalk.Net;
 using System.Linq;
 using Dissonance;
@@ -13,6 +14,7 @@ using Dissonance.Integrations.UNet_LLAPI;
 
 namespace Andromeda.Mod.Patches
 {
+    [HarmonyPatch]
     internal static class TransitionTrace
     {
         private static readonly object _sync = new object();
@@ -83,6 +85,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch]
     public static class ProgramServerPatch
     {
         [HarmonyPatch(typeof(ProgramServer), "Host")]
@@ -145,17 +148,42 @@ namespace Andromeda.Mod.Patches
             }
         }
 
-        [HarmonyPatch(typeof(ProgramServer), "OnJoinComplete")]
-        [HarmonyPostfix]
-        public static void PostfixOnJoinComplete(ProgramServer __instance, PlayerId playerId)
+        [HarmonyPatch(typeof(ProgramServer), "OnJoin")]
+        [HarmonyPrefix]
+        public static void PrefixOnJoin(ProgramServer __instance, PlayerId playerId, ProgramShared.JoinRequest request)
         {
             if (!DedicatedServerStartup.IsServer) return;
-            try
+
+            // UNIVERSAL JOINER: Force the incoming request to look exactly like what the server expects.
+            // This bypasses the version-mismatch check that causes the handshake to stall.
+            if (request != null)
             {
-                int count = __instance?.PlayerCount ?? -1;
-                NetworkDebugger.LogLobbyEvent($"[SERVER-JOIN] ProgramServer.OnJoinComplete playerId={playerId} totalPlayers={count}");
+                var versionField = typeof(ProgramShared.JoinRequest).GetField("version", BindingFlags.Public | BindingFlags.Instance);
+                if (versionField != null)
+                {
+                    // Copy the server's internal version marker into the request
+                    versionField.SetValue(request, Version.Value);
+                }
+                
+                MelonLogger.Msg($"[JOIN-FORCE] Forcing handshake for player={playerId} (Forced Version: {Version.Value})");
             }
-            catch { }
+        }
+
+        [HarmonyPatch(typeof(ProgramServer), "Update")]
+        [HarmonyPrefix]
+        public static void PrefixUpdate()
+        {
+            // Empty timeout is active.
+        }
+
+        public static bool PrefixClientAwakeStub()
+        {
+            if (DedicatedServerStartup.IsServer)
+            {
+                MelonLogger.Msg("[SERVER-BOOT] Skipping ProgramClient.Awake via Hard-Link (resolution crash fixed).");
+                return false;
+            }
+            return true;
         }
 
         [HarmonyPatch(typeof(ProgramServer), "OnLeave")]
@@ -172,6 +200,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch]
     public static class GamemodeBeginGatePatch
     {
         [HarmonyPatch(typeof(Gamemode), "Begin")]
@@ -200,6 +229,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch]
     public static class EntitySpawnGatePatch
     {
         [HarmonyPatch(typeof(EntityManagerServer), "Spawn", new Type[] { typeof(EntitySpawnData) })]
@@ -228,6 +258,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch]
     public static class LobbyServerPatch
     {
         [HarmonyPatch(typeof(LobbyServer), "OnEnable")]
@@ -261,19 +292,58 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    // [HarmonyPatch] - Muted due to IL Compile Error (MonoMod bug with generics)
     public static class NetworkListenPatch
     {
         [HarmonyPatch(typeof(NetServer), "Host")]
         [HarmonyPostfix]
-        public static void PostfixHost(int port, bool __result)
+        public static void PostfixHost()
         {
-            if (__result)
-                NetworkDebugger.LogLobbyEvent($"[SOCKET] TCP Socket successfully opened on port {port}. Listening...");
-            else
-                NetworkDebugger.LogLobbyEvent($"[SOCKET] FAILED to open TCP Socket on port {port}!", "Error");
+            NetworkDebugger.LogLobbyEvent($"[SOCKET] NetServer.Host executed.");
         }
     }
 
+    [HarmonyPatch]
+    public static class GameliftPatch
+    {
+        [HarmonyPatch(typeof(Gamelift), "Initialize")]
+        [HarmonyPrefix]
+        public static bool PrefixInitialize()
+        {
+            // Gamelift.Initialize is a stub in EOB — it never calls onHost.
+            // DedicatedServerStartup.InitializeServer() calls ProgramServer's private Host directly
+            // via reflection, which opens the socket. So we just skip this no-op.
+            MelonLogger.Msg("[GAMELIFT] Gamelift.Initialize intercepted and skipped.");
+            return false;
+        }
+
+        [HarmonyPatch(typeof(Gamelift), "ValidatePlayerSession")]
+        [HarmonyPrefix]
+        public static bool PrefixValidate(ref bool __result)
+        {
+            // Always allow players to join without AWS Gamelift session validation.
+            __result = true;
+            return false;
+        }
+
+        [HarmonyPatch(typeof(Gamelift), "RemovePlayerSession")]
+        [HarmonyPrefix]
+        public static bool PrefixRemove() => false;
+
+        [HarmonyPatch(typeof(Gamelift), "End")]
+        [HarmonyPrefix]
+        public static bool PrefixEnd() => false;
+
+        [HarmonyPatch(typeof(Gamelift), "LockGameSession")]
+        [HarmonyPrefix]
+        public static bool PrefixLock() => false;
+
+        [HarmonyPatch(typeof(Gamelift), "UnlockGameSession")]
+        [HarmonyPrefix]
+        public static bool PrefixUnlock() => false;
+    }
+
+    [HarmonyPatch]
     public static class ApiClientPartyJoinPatch
     {
         [HarmonyPatch(typeof(ApiShared), "GamesCustomNew")]
@@ -284,6 +354,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch]
     public static class ProgramClientConnectPatch
     {
         [HarmonyPatch(typeof(ProgramClient), "Connect")]
@@ -309,6 +380,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    // [HarmonyPatch] - Muted due to IL Compile Error
     public static class NetClientSocketPatch
     {
         [HarmonyPatch(typeof(NetClient), "Join")]
@@ -319,6 +391,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch]
     public static class VoiceChatProbePatches
     {
         private static string Preview(string message, int maxLen = 80)
@@ -405,13 +478,17 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch]
     public static class ProgramClientProbePatch
     {
-        [HarmonyPatch(typeof(ProgramClient), "Awake")]
-        [HarmonyPostfix]
-        public static void PostfixAwake()
+        public static bool PrefixClientAwakeStub()
         {
-            TransitionTrace.Log("[CLIENT-PROBE] ProgramClient.Awake patched and executed.");
+            if (DedicatedServerStartup.IsServer)
+            {
+                MelonLogger.Msg("[SERVER-BOOT] Skipping ProgramClient.Awake via Hard-Link (resolution crash fixed).");
+                return false;
+            }
+            return true;
         }
 
         [HarmonyPatch(typeof(ProgramClient), "Join")]
@@ -421,7 +498,7 @@ namespace Andromeda.Mod.Patches
             TransitionTrace.Log($"[CLIENT-PROBE] ProgramClient.Join called: region={region} gameId={gameId}");
         }
     }
-
+    [HarmonyPatch]
     public static class MainMenuTransitionProbePatch
     {
         [HarmonyPatch(typeof(MainMenu), "JoinMatch")]
@@ -434,6 +511,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch]
     public static class CustomPartyClientJoinGamePatch
     {
         [HarmonyPatch(typeof(CustomPartyClient), "OnJoinGame")]
@@ -455,6 +533,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch]
     public static class AndromedaClientTransitionPatch
     {
         [HarmonyPatch(typeof(AndromedaClient), "OnLoadLevel")]
@@ -472,6 +551,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch]
     public static class AndromedaPhaseClockDesyncPatch
     {
         private static AndromedaShared.RoundPhase _lastPhase = AndromedaShared.RoundPhase.None;
@@ -514,6 +594,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch]
     public static class AndromedaServerTransitionPatch
     {
         private static readonly HashSet<int> ObjectivesEntered = new HashSet<int>();

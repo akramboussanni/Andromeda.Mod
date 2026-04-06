@@ -12,6 +12,11 @@ namespace Andromeda.Mod
     {
         public static bool IsServer { get; private set; }
         public static string SessionId { get; private set; }
+        public static string Region { get; private set; }
+        public static string GameName { get; private set; }
+        public static GamemodeList.Key GamemodeKey { get; private set; }
+        public static bool IsPublicSession { get; private set; }
+        public static string GamemodeData { get; private set; }
         private static bool initialized = false;
         private static DateTime startupTime;
         private static DateTime lastHeartbeat;
@@ -20,12 +25,32 @@ namespace Andromeda.Mod
 
         public static void Check(string[] args)
         {
-            if (args.Contains("--server"))
+            // Robust detection: check flags, batch mode, and common game server env vars
+            bool hasServerFlag = false;
+            foreach (var arg in args)
             {
-                IsServer = true;
+                if (arg == "--server" || arg == "-server" || arg == "-batchmode")
+                {
+                    hasServerFlag = true;
+                    break;
+                }
+            }
+
+            // Gamelift and common headless environment detection
+            bool isHeadless = !string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("GAMELIFT_SDK_VERSION"))
+                           || !string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("GAMELIFT_REGION"))
+                           || !string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("AWS_REGION"))
+                           || args.Any(a => a.Contains("Gamelift") || a.Contains("batchmode"));
+
+            // If we find Gamelift vars, we are ABSOLUTELY the server.
+            IsServer = hasServerFlag || isHeadless;
+
+            if (IsServer)
+            {
                 startupTime = DateTime.Now;
                 lastHeartbeat = DateTime.Now;
                 forcedAndromedaObjectives = false;
+                MelonLogger.Msg($"[STARTUP] Dedicated Server detected. Environment Markers FOUND.");
                 MelonLogger.Msg("!!! DEDICATED SERVER MODE DETECTED !!!");
 
                 // Check for UPnP enable flag (command line or env var)
@@ -58,7 +83,10 @@ namespace Andromeda.Mod
                     if (server != null) playerCount = server.PlayerCount;
                 } catch {}
 
-                MelonLogger.Msg($"[HEARTBEAT] Ticking... (Uptime: {(DateTime.Now - startupTime).TotalSeconds:F0}s, IsServer={Environment.IsServer}, Players={playerCount})");
+                bool netActive = false;
+                try { netActive = Singleton.Existing<NetServer>()?.Active ?? false; } catch {}
+                bool envIsServer = Environment.IsServer;
+                MelonLogger.Msg($"[HEARTBEAT] Ticking... (Uptime: {(DateTime.Now - startupTime).TotalSeconds:F0}s, IsServer={envIsServer}, Players={playerCount}, SocketListening={netActive})");
 
                 ProbeAndromedaState("heartbeat");
 
@@ -136,16 +164,23 @@ namespace Andromeda.Mod
             if (!string.IsNullOrWhiteSpace(modeDataPlain))
                 gamemodeData = modeDataPlain;
 
+            Region = region;
+            GameName = gameName;
+            GamemodeKey = gamemodeKey;
+            IsPublicSession = isPublic;
+            GamemodeData = gamemodeData;
+
             NetworkDebugger.LogLobbyEvent($"[SERVER-INIT] Targeting: Port={port}, Mode={gamemodeKey}, Region={region}, Session={SessionId}");
 
             try
             {
                 NetworkDebugger.LogLobbyEvent("[SERVER-INIT] PHASE 1.5: Patching Environment");
                 // Force Environment to Server Mode
-                typeof(Environment).GetField("port", BindingFlags.NonPublic | BindingFlags.Static).SetValue(null, port);
-                typeof(Environment).GetField("voicePort", BindingFlags.NonPublic | BindingFlags.Static).SetValue(null, port + 1);
+                typeof(global::Environment).GetField("port", BindingFlags.NonPublic | BindingFlags.Static).SetValue(null, (int?)port);
+                typeof(global::Environment).GetField("voicePort", BindingFlags.NonPublic | BindingFlags.Static).SetValue(null, (int?)(port + 1));
 
                 NetworkDebugger.LogLobbyEvent($"[SERVER-INIT] PHASE 2: Spawning ProgramServer Singleton (Current Port: {Environment.Port})");
+
                 var server = Singleton.Get<ProgramServer>();
                 if (server == null)
                 {
@@ -180,7 +215,12 @@ namespace Andromeda.Mod
                         gamemodeData 
                     });
                     NetworkDebugger.LogLobbyEvent($"[SERVER-INIT] SUCCESS: Host command sent to Engine (Gamemode: {gamemodeKey}).");
+
+                    // Gamelift normally calls NetServer.Host(port) via its onHost callback.
+                    // Since we bypass Gamelift entirely, we must open the socket ourselves.
+
                     ProbeAndromedaState("post-host");
+
                 }
                 else
                 {

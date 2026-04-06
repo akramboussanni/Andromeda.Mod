@@ -6,6 +6,7 @@ using MelonLoader;
 
 namespace Andromeda.Mod.Patches
 {
+    [HarmonyPatch]
     public static class LogWriterRedirectPatch
     {
         [HarmonyPatch(typeof(LogWriter), "TcpReconnect")]

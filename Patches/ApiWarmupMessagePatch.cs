@@ -5,6 +5,7 @@ using UnityEngine.Networking;
 
 namespace Andromeda.Mod.Patches
 {
+    // [HarmonyPatch] - Muted due to undefined target method
     public static class ApiWarmupMessagePatch
     {
         private static DateTime _nextPromptUtc = DateTime.MinValue;

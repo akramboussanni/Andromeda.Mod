@@ -3,6 +3,7 @@ using MelonLoader;
 
 namespace Andromeda.Mod.Patches
 {
+    [HarmonyPatch]
     public static class AnalyticsPatch
     {
         [HarmonyPatch(typeof(DeltaDNA.DDNA), "StartSDK", new System.Type[] { typeof(DeltaDNA.Configuration), typeof(string) })]

@@ -53,7 +53,7 @@ namespace Andromeda.Mod
             else MelonLogger.Msg($"[DEBUG-LOG] {info}");
 
             // Send to Python Log Server (Fire and Forget)
-            System.Threading.ThreadPool.QueueUserWorkItem(_ => 
+            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
             {
                 SendToLogServer($"[{status}] {info}");
             });
@@ -97,7 +97,7 @@ namespace Andromeda.Mod
         private static object _selectedDataItem = null;
         private static Vector2 _scrollPosDataList = Vector2.zero;
         private static Vector2 _scrollPosDataDetails = Vector2.zero;
-        
+
         public static void Initialize()
         {
             MelonLogger.Msg("Andromeda Mod Debugger Loaded. Initializing...");
@@ -108,13 +108,17 @@ namespace Andromeda.Mod
 
         private static void FetchPublicIp()
         {
-            System.Threading.ThreadPool.QueueUserWorkItem(_ => 
+            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
             {
-                try {
-                    using (var wc = new System.Net.WebClient()) {
+                try
+                {
+                    using (var wc = new System.Net.WebClient())
+                    {
                         _publicIp = wc.DownloadString("https://api.ipify.org").Trim();
                     }
-                } catch {
+                }
+                catch
+                {
                     _publicIp = "Failed to fetch (Check connection)";
                 }
             });
@@ -123,10 +127,10 @@ namespace Andromeda.Mod
         public static void LoadSettingsEarly()
         {
             // Force override on first launch of this patch version (incremented to version 3)
-            if (PlayerPrefs.GetInt("Andromeda_Version", 0) < 8)
+            if (PlayerPrefs.GetInt("Andromeda_Version", 0) < 9)
             {
-                PlayerPrefs.SetString("Andromeda_ApiUrl", "https://parasite2.mrie.dev");
-                PlayerPrefs.SetInt("Andromeda_Version", 8);
+                PlayerPrefs.SetString("Andromeda_ApiUrl", "https://andromeda.kimotherapy.dev");
+                PlayerPrefs.SetInt("Andromeda_Version", 9);
                 PlayerPrefs.Save();
             }
 
@@ -134,25 +138,25 @@ namespace Andromeda.Mod
             _logIpInput = PlayerPrefs.GetString("Andromeda_LogIp", "127.0.0.1");
             _logPortInput = PlayerPrefs.GetString("Andromeda_LogPort", "9090");
             _upnpEnabled = PlayerPrefs.GetInt("Andromeda_UpnpEnabled", 0) == 1;
-            
+
             _apiUrlInput = FixUrl(_apiUrlInput);
             RestApi.API_URL = _apiUrlInput;
         }
 
         private static string FixUrl(string url)
         {
-            if (string.IsNullOrEmpty(url)) return "https://parasite2.mrie.dev";
-            
+            if (string.IsNullOrEmpty(url)) return "https://andromeda.kimotherapy.dev";
+
             string sanitized = url.Trim().TrimEnd('/');
-            
+
             // Default to http if no protocol is provided
             if (!sanitized.StartsWith("http://") && !sanitized.StartsWith("https://"))
             {
                 sanitized = "http://" + sanitized;
             }
-            
+
             // Check for port removed as requested by user
-            
+
             return sanitized;
         }
 
@@ -185,9 +189,9 @@ namespace Andromeda.Mod
         {
             if (!_showGui) return;
 
-            GUI.depth = -9999; 
-            GUI.skin.window.normal.background = Texture2D.whiteTexture; 
-            
+            GUI.depth = -9999;
+            GUI.skin.window.normal.background = Texture2D.whiteTexture;
+
             _windowRect = GUI.Window(1001, _windowRect, DrawWindow, "Andromeda Debugger (F10)");
         }
 
@@ -199,9 +203,9 @@ namespace Andromeda.Mod
             if (GUILayout.Button("Network", _currentTab == DebugTab.Network ? GUI.skin.button : GUI.skin.box)) _currentTab = DebugTab.Network;
             if (GUILayout.Button("Data Explorer", _currentTab == DebugTab.Data ? GUI.skin.button : GUI.skin.box)) _currentTab = DebugTab.Data;
             if (GUILayout.Button("Settings", _currentTab == DebugTab.Settings ? GUI.skin.button : GUI.skin.box)) _currentTab = DebugTab.Settings;
-            
+
             GUILayout.FlexibleSpace();
-            
+
             // "this button" (Force Start)
             GUI.color = Color.green;
             if (GUILayout.Button("FORCE START GAME", GUILayout.Width(150)))
@@ -209,12 +213,12 @@ namespace Andromeda.Mod
                 ForceStart();
             }
             GUI.color = Color.white;
-            
+
             if (GUILayout.Button("DUMP DATA", GUILayout.Width(100)))
             {
                 DumpData();
             }
-            
+
             GUILayout.EndHorizontal();
 
             GUILayout.Space(10);
@@ -235,30 +239,31 @@ namespace Andromeda.Mod
 
             GUILayout.BeginHorizontal();
             GUILayout.Label($"<b>Your Public IP:</b> <color=cyan>{_publicIp}</color>", GUI.skin.box);
-            if (GUILayout.Button("Copy", GUILayout.Width(60))) {
+            if (GUILayout.Button("Copy", GUILayout.Width(60)))
+            {
                 GUIUtility.systemCopyBuffer = _publicIp;
             }
             GUILayout.EndHorizontal();
 
             GUILayout.Space(10);
-            
+
             GUILayout.Label("To host a dedicated server on the internet, you need to open the following ports on your router (Access your router via 192.168.1.1 or similar, and find 'Port Forwarding' / 'Virtual Servers'):");
             GUILayout.Space(10);
-            
+
             GUILayout.Label("<b>1. Game Server Ports (Required)</b>");
             GUILayout.Label("- Protocol: TCP & UDP");
             GUILayout.Label("- Range: <b>7777 to 7877</b>");
             GUILayout.Label("<i>(Each game lobby spawns a new instance on an incremented port starting at 7777. The voice server naturally opens on +1 of the game port.)</i>");
-            
+
             GUILayout.Space(15);
-            
+
             GUILayout.Label("<b>2. Python API Backend (Required)</b>");
             GUILayout.Label("- Protocol: TCP");
             GUILayout.Label("- Port: <b>8000</b> (unless you use a reverse proxy to route 80/443)");
             GUILayout.Label("<i>(Clients must point their Settings API URL to your Public IP above—or your domain like Andromeda2.mrie.dev—so they can authenticate, browse lobbies, and load catalogs.)</i>");
 
             GUILayout.Space(15);
-            
+
             GUILayout.Label("<b>3. Python Log Server (Optional)</b>");
             GUILayout.Label("- Protocol: TCP");
             GUILayout.Label("- Port: <b>9090</b>");
@@ -275,36 +280,36 @@ namespace Andromeda.Mod
         {
             GUILayout.BeginVertical();
             GUILayout.Label("Mod & API Settings", GUI.skin.box);
-            
+
             GUILayout.Space(10);
-            
+
             GUILayout.BeginHorizontal();
             GUILayout.Label("Python API URL:", GUILayout.Width(120));
             _apiUrlInput = GUILayout.TextField(_apiUrlInput);
             GUILayout.EndHorizontal();
-            
+
             GUILayout.Space(5);
-            
+
             if (GUILayout.Button("APPLY NEW API URL", GUILayout.Height(40)))
             {
                 ApplyApiUrl();
             }
-            
+
             GUILayout.Space(10);
-            
+
             GUILayout.BeginHorizontal();
             _upnpEnabled = GUILayout.Toggle(_upnpEnabled, "Enable UPnP Port Forwarding");
             GUILayout.EndHorizontal();
-            
+
             if (GUILayout.Button("SAVE SETTINGS", GUILayout.Height(30)))
             {
                 SaveSettings();
                 MelonLogger.Msg("[DEBUG-UI] Settings saved.");
             }
-            
+
             GUILayout.Space(20);
             GUILayout.Label("Python Log Server Settings", GUI.skin.box);
-            
+
             GUILayout.BeginHorizontal();
             GUILayout.Label("Log Server IP:", GUILayout.Width(120));
             _logIpInput = GUILayout.TextField(_logIpInput);
@@ -327,34 +332,40 @@ namespace Andromeda.Mod
             GUILayout.Label($"<b>Log Server:</b> {_logIpInput}:{_logPortInput}");
             GUILayout.Label($"<b>Game Engine Endpoint:</b> {ApiShared.SERVICE_ADDRESS}");
             GUILayout.Label($"<b>ApiData.IsLoaded:</b> {(ApiData.IsLoaded ? "<color=green>TRUE</color>" : "<color=red>FALSE</color>")}");
-            
+
             string sceneName = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
             string currentMode = "None";
-            try {
+            try
+            {
                 var server = Singleton.Existing<ProgramServer>();
-                if (server != null) {
+                if (server != null)
+                {
                     var modeField = typeof(ProgramServer).GetField("gamemode", BindingFlags.NonPublic | BindingFlags.Instance);
                     var mode = modeField?.GetValue(server);
                     if (mode != null) currentMode = mode.GetType().Name;
                 }
-            } catch {}
+            }
+            catch { }
 
             GUILayout.Label($"<b>Active Scene:</b> <color=cyan>{sceneName}</color>");
             GUILayout.Label($"<b>Active Gamemode:</b> <color=cyan>{currentMode}</color>");
-            
+
             GUILayout.EndVertical();
         }
 
         private static void ForceApiLoaded()
         {
-            try {
+            try
+            {
                 var prop = typeof(ApiData).GetProperty("IsLoaded", BindingFlags.Public | BindingFlags.Static);
                 if (prop != null)
                 {
                     prop.SetValue(null, true);
                     MelonLogger.Msg("[DEBUG-UI] Forced ApiData.IsLoaded to TRUE.");
                 }
-            } catch (Exception e) {
+            }
+            catch (Exception e)
+            {
                 MelonLogger.Error($"[DEBUG-UI] Failed to force ApiData.IsLoaded: {e.Message}");
             }
         }
@@ -363,9 +374,10 @@ namespace Andromeda.Mod
         {
             _apiUrlInput = FixUrl(_apiUrlInput);
             RestApi.API_URL = _apiUrlInput;
-            
+
             // Re-patch ApiShared.SERVICE_ADDRESS
-            try {
+            try
+            {
                 var apiType = typeof(ApiShared);
                 var urlField = apiType.GetField("SERVICE_ADDRESS", BindingFlags.Public | BindingFlags.Static);
                 if (urlField != null)
@@ -373,10 +385,12 @@ namespace Andromeda.Mod
                     urlField.SetValue(null, RestApi.API_URL);
                     MelonLogger.Msg($"[DEBUG-UI] Updated SERVICE_ADDRESS -> {RestApi.API_URL}");
                 }
-            } catch (Exception e) {
+            }
+            catch (Exception e)
+            {
                 MelonLogger.Error($"[DEBUG-UI] Failed to re-patch SERVICE_ADDRESS: {e.Message}");
             }
-            
+
             SaveSettings();
         }
 
@@ -385,25 +399,25 @@ namespace Andromeda.Mod
             var lobby = UnityEngine.Object.FindObjectOfType<LobbyServer>();
             if (lobby != null)
             {
-                 // Set all players to ready
-                 var playersField = typeof(LobbyShared).GetField("players", BindingFlags.NonPublic | BindingFlags.Instance);
-                 if (playersField != null)
-                 {
-                     var players = playersField.GetValue(lobby) as Dictionary<PlayerId, LobbyShared.Player>;
-                     if (players != null)
-                     {
-                         foreach (var key in players.Keys.ToList())
-                         {
-                             var p = players[key];
-                             p.isReady = true;
-                             players[key] = p;
-                         }
-                     }
-                 }
-                 // Send update
-                 var sendUpdate = typeof(LobbyServer).GetMethod("SendUpdate", BindingFlags.NonPublic | BindingFlags.Instance);
-                 sendUpdate?.Invoke(lobby, null);
-                 MelonLogger.Msg("[DEBUG-UI] Force Start triggered: All players set to READY.");
+                // Set all players to ready
+                var playersField = typeof(LobbyShared).GetField("players", BindingFlags.NonPublic | BindingFlags.Instance);
+                if (playersField != null)
+                {
+                    var players = playersField.GetValue(lobby) as Dictionary<PlayerId, LobbyShared.Player>;
+                    if (players != null)
+                    {
+                        foreach (var key in players.Keys.ToList())
+                        {
+                            var p = players[key];
+                            p.isReady = true;
+                            players[key] = p;
+                        }
+                    }
+                }
+                // Send update
+                var sendUpdate = typeof(LobbyServer).GetMethod("SendUpdate", BindingFlags.NonPublic | BindingFlags.Instance);
+                sendUpdate?.Invoke(lobby, null);
+                MelonLogger.Msg("[DEBUG-UI] Force Start triggered: All players set to READY.");
             }
             else
             {
@@ -418,15 +432,15 @@ namespace Andromeda.Mod
             // LEFT PANEL: List
             GUILayout.BeginVertical(GUILayout.Width(350));
             GUILayout.Label("Requests", GUI.skin.box);
-            
+
             _scrollPositionList = GUILayout.BeginScrollView(_scrollPositionList, GUI.skin.box);
-            
+
             for (int i = Requests.Count - 1; i >= 0; i--)
             {
                 var req = Requests[i];
                 GUI.color = GetStatusColor(req.Status);
                 string label = $"[{req.Method}] {GetShortUrl(req.Url)}\n{req.ResolvedType ?? "Unknown"}";
-                
+
                 if (GUILayout.Button(label, GUILayout.Height(40)))
                 {
                     _selectedRequest = req;
@@ -435,7 +449,7 @@ namespace Andromeda.Mod
             }
 
             GUILayout.EndScrollView();
-            
+
             if (GUILayout.Button("Clear", GUILayout.Height(30)))
             {
                 Requests.Clear();
@@ -457,9 +471,9 @@ namespace Andromeda.Mod
                 GUILayout.Label($"<b>Status:</b> {_selectedRequest.ResponseCode} ({_selectedRequest.Status})");
                 if (!string.IsNullOrEmpty(_selectedRequest.Error))
                 {
-                     GUI.color = Color.red;
-                     GUILayout.Label($"<b>Error:</b> {_selectedRequest.Error}");
-                     GUI.color = Color.white;
+                    GUI.color = Color.red;
+                    GUILayout.Label($"<b>Error:</b> {_selectedRequest.Error}");
+                    GUI.color = Color.white;
                 }
 
                 GUILayout.Space(10);
@@ -499,7 +513,7 @@ namespace Andromeda.Mod
             GUILayout.BeginVertical(GUILayout.Width(250));
             GUILayout.Label($"{_selectedCategory} List", GUI.skin.box);
             _scrollPosDataList = GUILayout.BeginScrollView(_scrollPosDataList, GUI.skin.box);
-            
+
             var list = GetDataList(_selectedCategory);
             foreach (var item in list)
             {
@@ -516,7 +530,7 @@ namespace Andromeda.Mod
             GUILayout.BeginVertical();
             GUILayout.Label("Inspector", GUI.skin.box);
             _scrollPosDataDetails = GUILayout.BeginScrollView(_scrollPosDataDetails, GUI.skin.box);
-            
+
             if (_selectedDataItem != null)
             {
                 DrawObjectInspector(_selectedDataItem);
@@ -525,7 +539,7 @@ namespace Andromeda.Mod
             {
                 GUILayout.Label("Select an item to inspect.");
             }
-            
+
             GUILayout.EndScrollView();
             GUILayout.EndVertical();
 
@@ -535,7 +549,7 @@ namespace Andromeda.Mod
         private static IEnumerable<object> GetDataList(string category)
         {
             object instance = null;
-            switch(category)
+            switch (category)
             {
                 case "Characters": instance = CharacterSpawnList.Instance; break;
                 case "Items": instance = ItemSpawnList.Instance; break;
@@ -579,60 +593,60 @@ namespace Andromeda.Mod
 
         private static void DrawObjectInspector(object obj)
         {
-             if (obj == null) return;
-             var type = obj.GetType();
-             GUILayout.Label($"<b>Type:</b> {type.Name}");
-             
-             var keyField = type.GetField("key");
-             var valueField = type.GetField("value");
-             
-             if (keyField != null)
-             {
-                 GUILayout.Label($"<b>Key (Enum):</b> {keyField.GetValue(obj)}");
-             }
-             
-             if (valueField != null)
-             {
-                 var settingsObj = valueField.GetValue(obj);
-                 GUILayout.Space(5);
-                 GUILayout.Label("<b>Settings Object:</b>");
-                 if (settingsObj != null)
-                 {
-                     var keyObj = keyField != null ? keyField.GetValue(obj) : null;
-                     var resolvedGuid = ResolveGuidWithFallback(settingsObj, keyObj);
-                     if (!string.IsNullOrEmpty(resolvedGuid))
-                     {
-                         var currentGuid = GetStringMember(settingsObj, "guid");
-                         if (string.IsNullOrWhiteSpace(currentGuid))
-                             SetStringMember(settingsObj, "guid", resolvedGuid);
-                     }
+            if (obj == null) return;
+            var type = obj.GetType();
+            GUILayout.Label($"<b>Type:</b> {type.Name}");
 
-                     DrawReflectedFields(settingsObj);
+            var keyField = type.GetField("key");
+            var valueField = type.GetField("value");
 
-                     if (!string.IsNullOrEmpty(resolvedGuid))
-                     {
-                         GUILayout.BeginHorizontal();
-                         GUILayout.Label("<b>resolvedGuid:</b> ", GUILayout.Width(150));
-                         GUILayout.Label(resolvedGuid);
-                         GUILayout.EndHorizontal();
-                     }
-                 }
-                 else
-                 {
-                     GUILayout.Label("null");
-                 }
-             }
-             else
-             {
-                 DrawReflectedFields(obj);
-             }
+            if (keyField != null)
+            {
+                GUILayout.Label($"<b>Key (Enum):</b> {keyField.GetValue(obj)}");
+            }
+
+            if (valueField != null)
+            {
+                var settingsObj = valueField.GetValue(obj);
+                GUILayout.Space(5);
+                GUILayout.Label("<b>Settings Object:</b>");
+                if (settingsObj != null)
+                {
+                    var keyObj = keyField != null ? keyField.GetValue(obj) : null;
+                    var resolvedGuid = ResolveGuidWithFallback(settingsObj, keyObj);
+                    if (!string.IsNullOrEmpty(resolvedGuid))
+                    {
+                        var currentGuid = GetStringMember(settingsObj, "guid");
+                        if (string.IsNullOrWhiteSpace(currentGuid))
+                            SetStringMember(settingsObj, "guid", resolvedGuid);
+                    }
+
+                    DrawReflectedFields(settingsObj);
+
+                    if (!string.IsNullOrEmpty(resolvedGuid))
+                    {
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label("<b>resolvedGuid:</b> ", GUILayout.Width(150));
+                        GUILayout.Label(resolvedGuid);
+                        GUILayout.EndHorizontal();
+                    }
+                }
+                else
+                {
+                    GUILayout.Label("null");
+                }
+            }
+            else
+            {
+                DrawReflectedFields(obj);
+            }
         }
 
         private static void DrawReflectedFields(object obj)
         {
             if (obj == null) return;
             var type = obj.GetType();
-            
+
             foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.Instance))
             {
                 var val = field.GetValue(obj);
@@ -641,13 +655,13 @@ namespace Andromeda.Mod
                 GUILayout.Label(val?.ToString() ?? "null");
                 GUILayout.EndHorizontal();
             }
-            
+
             foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {
                 if (!prop.CanRead) continue;
                 object val = null;
                 try { val = prop.GetValue(obj, null); } catch { val = "Error"; }
-                
+
                 GUILayout.BeginHorizontal();
                 GUILayout.Label($"<b>{prop.Name}:</b> ", GUILayout.Width(150));
                 GUILayout.Label(val?.ToString() ?? "null");
@@ -752,7 +766,7 @@ namespace Andromeda.Mod
 
         private static string GetShortUrl(string url)
         {
-            try 
+            try
             {
                 var uri = new Uri(url);
                 return uri.AbsolutePath;
@@ -773,7 +787,7 @@ namespace Andromeda.Mod
                 {
                     if (type.IsSubclassOf(typeof(ApiShared.Request)))
                     {
-                        try 
+                        try
                         {
                             var instance = Activator.CreateInstance(type) as ApiShared.Request;
                             if (instance != null)
@@ -795,23 +809,23 @@ namespace Andromeda.Mod
                 MelonLogger.Error($"Failed to build endpoint map: {e}");
             }
         }
-        
+
         private static string FormatJson(string json)
         {
             if (string.IsNullOrEmpty(json)) return "";
-            try 
+            try
             {
-               object parsedJson = JsonConvert.DeserializeObject(json);
-               return JsonConvert.SerializeObject(parsedJson, Formatting.Indented);
+                object parsedJson = JsonConvert.DeserializeObject(json);
+                return JsonConvert.SerializeObject(parsedJson, Formatting.Indented);
             }
-            catch 
+            catch
             {
                 return json;
             }
         }
-        
+
         // --- Harmony Patches ---
-        
+
         [HarmonyPatch(typeof(UnityWebRequest), "SendWebRequest")]
         public static class WebRequestPatch
         {
@@ -819,75 +833,76 @@ namespace Andromeda.Mod
             {
                 try
                 {
-                     string url = __instance.url;
-                     if (string.IsNullOrEmpty(url) || !url.StartsWith("http")) return;
+                    string url = __instance.url;
+                    if (string.IsNullOrEmpty(url) || !url.StartsWith("http")) return;
 
-                     string body = "";
-                     if (__instance.uploadHandler != null && __instance.uploadHandler.data != null)
-                     {
-                         body = Encoding.UTF8.GetString(__instance.uploadHandler.data);
-                     }
+                    string body = "";
+                    if (__instance.uploadHandler != null && __instance.uploadHandler.data != null)
+                    {
+                        body = Encoding.UTF8.GetString(__instance.uploadHandler.data);
+                    }
 
-                     string path = "Unknown";
-                     string typeName = "Unknown/Custom";
-                     string typeResponseName = "";
-                     try 
-                     {
-                         var uri = new Uri(url);
-                         path = uri.AbsolutePath;
-                         if (EndpointTypeMap.TryGetValue(path, out Type t))
-                         {
-                             typeName = t.Name;
-                             if (typeName.EndsWith("Request"))
-                             {
-                                 string baseName = typeName.Substring(0, typeName.Length - 7);
-                                 typeResponseName = baseName + "Response";
-                             }
-                         }
-                     } catch {}
+                    string path = "Unknown";
+                    string typeName = "Unknown/Custom";
+                    string typeResponseName = "";
+                    try
+                    {
+                        var uri = new Uri(url);
+                        path = uri.AbsolutePath;
+                        if (EndpointTypeMap.TryGetValue(path, out Type t))
+                        {
+                            typeName = t.Name;
+                            if (typeName.EndsWith("Request"))
+                            {
+                                string baseName = typeName.Substring(0, typeName.Length - 7);
+                                typeResponseName = baseName + "Response";
+                            }
+                        }
+                    }
+                    catch { }
 
-                     var req = new NetworkRequest
-                     {
-                         Url = url,
-                         Method = __instance.method,
-                         RequestBody = FormatJson(body),
-                         Status = "Pending",
-                         ResolvedType = typeName,
-                         ResolvedResponseType = typeResponseName,
-                         Timestamp = Time.time
-                     };
-                     
-                     Requests.Add(req);
+                    var req = new NetworkRequest
+                    {
+                        Url = url,
+                        Method = __instance.method,
+                        RequestBody = FormatJson(body),
+                        Status = "Pending",
+                        ResolvedType = typeName,
+                        ResolvedResponseType = typeResponseName,
+                        Timestamp = Time.time
+                    };
+
+                    Requests.Add(req);
                 }
                 catch (Exception e) { MelonLogger.Error($"Prefix Error: {e}"); }
             }
 
             public static void Postfix(UnityWebRequest __instance, UnityWebRequestAsyncOperation __result)
             {
-                 if (__result == null) return;
-                 
-                 var req = Requests.LastOrDefault(r => r.Url == __instance.url && r.Status == "Pending");
-                 
-                 __result.completed += (operation) => 
-                 {
-                     try 
-                     {
-                         if (req == null) return;
+                if (__result == null) return;
 
-                         req.ResponseCode = (int)__instance.responseCode;
-                         req.Status = (__instance.isNetworkError || __instance.isHttpError) ? "Error" : "Success";
-                         req.Error = __instance.error;
-                         
-                         if (__instance.downloadHandler != null)
-                         {
-                             req.ResponseBody = FormatJson(__instance.downloadHandler.text);
-                         }
-                     }
-                     catch (Exception e)
-                     {
-                         MelonLogger.Error($"Async Callback Error: {e}");
-                     }
-                 };
+                var req = Requests.LastOrDefault(r => r.Url == __instance.url && r.Status == "Pending");
+
+                __result.completed += (operation) =>
+                {
+                    try
+                    {
+                        if (req == null) return;
+
+                        req.ResponseCode = (int)__instance.responseCode;
+                        req.Status = (__instance.isNetworkError || __instance.isHttpError) ? "Error" : "Success";
+                        req.Error = __instance.error;
+
+                        if (__instance.downloadHandler != null)
+                        {
+                            req.ResponseBody = FormatJson(__instance.downloadHandler.text);
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        MelonLogger.Error($"Async Callback Error: {e}");
+                    }
+                };
             }
         }
 
@@ -908,7 +923,7 @@ namespace Andromeda.Mod
             DumpFile(dumpDir, "skins.json", ExtractSkins());
             DumpFile(dumpDir, "progression.json", ExtractProgression());
 
-             MelonLogger.Msg($"Data dumped to {dumpDir}");
+            MelonLogger.Msg($"Data dumped to {dumpDir}");
         }
 
         private static void DumpFile(string dir, string filename, object data)
@@ -950,25 +965,26 @@ namespace Andromeda.Mod
 
                 var abilityKey = kvp.Value.baseAbility;
                 var perkKeys = kvp.Value.uniquePerks;
-                
+
                 var abilityData = new Dictionary<string, object>();
-                var abilityBaseInfo = AbilitySpawnList.Instance.Get(abilityKey); 
-                if (abilityBaseInfo != null) {
-                     var abilityTiers = new List<string>();
-                     string baseName = abilityKey.ToString();
-                     string rootName = baseName.EndsWith("_1") ? baseName.Substring(0, baseName.Length - 2) : baseName;
-                     
-                     foreach (var entry in AbilitySpawnList.Instance.GetEntries())
-                     {
-                         string entryName = entry.key.ToString();
-                         if (entryName == rootName || entryName.StartsWith(rootName + "_"))
-                         {
-                             if (entry.value != null) abilityTiers.Add(entry.value.guid);
-                         }
-                     }
-                     
-                     abilityData["base_guid"] = abilityBaseInfo.guid;
-                     abilityData["tiers"] = abilityTiers;
+                var abilityBaseInfo = AbilitySpawnList.Instance.Get(abilityKey);
+                if (abilityBaseInfo != null)
+                {
+                    var abilityTiers = new List<string>();
+                    string baseName = abilityKey.ToString();
+                    string rootName = baseName.EndsWith("_1") ? baseName.Substring(0, baseName.Length - 2) : baseName;
+
+                    foreach (var entry in AbilitySpawnList.Instance.GetEntries())
+                    {
+                        string entryName = entry.key.ToString();
+                        if (entryName == rootName || entryName.StartsWith(rootName + "_"))
+                        {
+                            if (entry.value != null) abilityTiers.Add(entry.value.guid);
+                        }
+                    }
+
+                    abilityData["base_guid"] = abilityBaseInfo.guid;
+                    abilityData["tiers"] = abilityTiers;
                 }
 
                 var perksList = new List<object>();
@@ -984,25 +1000,27 @@ namespace Andromeda.Mod
                         foreach (var entry in PerkSpawnList.Instance.GetEntries())
                         {
                             string entryName = entry.key.ToString();
-                             if (entryName == pRootName || entryName.StartsWith(pRootName + "_"))
-                             {
-                                 if (entry.value != null) perkTiers.Add(entry.value.guid);
-                             }
+                            if (entryName == pRootName || entryName.StartsWith(pRootName + "_"))
+                            {
+                                if (entry.value != null) perkTiers.Add(entry.value.guid);
+                            }
                         }
-                        
-                        perksList.Add(new {
+
+                        perksList.Add(new
+                        {
                             base_guid = pSettings.guid,
                             tiers = perkTiers
                         });
                     }
                 }
 
-                charactersDict[charSettings.guid] = new {
+                charactersDict[charSettings.guid] = new
+                {
                     ability = abilityData,
                     perks = perksList
                 };
             }
-            
+
             progressionData["characters"] = charactersDict;
             return progressionData;
         }
@@ -1030,13 +1048,13 @@ namespace Andromeda.Mod
 
                 var settingsType = settings.GetType();
                 var guidField = settingsType.GetField("guid") ?? settingsType.GetProperty("guid") as MemberInfo;
-                
+
                 string guidVal = null;
                 if (guidField is FieldInfo fi) guidVal = fi.GetValue(settings) as string;
                 else if (guidField is PropertyInfo pi) guidVal = pi.GetValue(settings, null) as string;
-                
+
                 var nameField = settingsType.GetField("name") ?? settingsType.GetProperty("name") as MemberInfo;
-                 object nameVal = null;
+                object nameVal = null;
                 if (nameField is FieldInfo ni) nameVal = ni.GetValue(settings);
                 else if (nameField is PropertyInfo npi) nameVal = npi.GetValue(settings, null);
 
@@ -1048,7 +1066,8 @@ namespace Andromeda.Mod
 
                 if (!string.IsNullOrEmpty(guidVal))
                 {
-                    list.Add(new { 
+                    list.Add(new
+                    {
                         guid = guidVal,
                         name = nameVal?.ToString() ?? guidVal,
                         purchasable = true,

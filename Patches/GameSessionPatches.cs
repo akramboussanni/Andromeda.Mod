@@ -73,6 +73,7 @@ namespace Andromeda.Mod.Patches
     /// The state machine type is searched for at runtime to avoid hard-coding the
     /// compiler-generated name suffix.
     /// </summary>
+    [HarmonyPatch]
     public static class AndromedaServerMinPlayerPatch
     {
         private static MethodBase _moveNextMethod;

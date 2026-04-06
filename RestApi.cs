@@ -9,7 +9,7 @@ namespace Andromeda.Mod
 {
     public static class RestApi
     {
-        public static string API_URL = "http://74.14.173.40:8000";
+        public static string API_URL = "https://andromeda.kimotherapy.dev";
 
 
         public static IEnumerator RegisterServerCoro(string sessionId, int port, string region)
@@ -52,7 +52,9 @@ namespace Andromeda.Mod
             req.uploadHandler = new UploadHandlerRaw(bodyData);
             req.downloadHandler = new DownloadHandlerBuffer();
             req.SetRequestHeader("Content-Type", "application/json");
-            req.SetRequestHeader("Authorization", Steam.AuthToken);
+            string authToken = DedicatedServerStartup.IsServer ? "DEDICATED_SERVER_TOKEN" : Steam.AuthToken;
+            if (!string.IsNullOrEmpty(authToken))
+                req.SetRequestHeader("Authorization", authToken);
 
             yield return req.SendWebRequest();
             

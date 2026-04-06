@@ -11,6 +11,7 @@ namespace Andromeda.Mod.Patches
 {
     // Removed class-level attributes to prevent double-patching via MelonLoader auto-scan
 
+    [HarmonyPatch]
     public static class CryonautModelFix
     {
         private const string CryonautGuid = "cryonaut";
@@ -133,6 +134,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch]
     public static class SkinGuidRuntimeFix
     {
         private static bool _normalized;
@@ -309,6 +311,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch]
     public static class CryonautProgressionUiPatch
     {
         [HarmonyPatch(typeof(CharacterProgressionTab), "DisplayPerkProgression")]
@@ -411,6 +414,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch]
     public static class CryonautClassTabPatch
     {
         [HarmonyPatch(typeof(CharacterClassTab), "DisplayDetails")]
@@ -427,6 +431,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch]
     public static class CryonautShowcasePatch
     {
         [HarmonyPatch(typeof(Showcase), "SetSkin")]
@@ -507,6 +512,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch]
     public static class SkinGuidAliasPatch
     {
         [HarmonyPatch(typeof(SkinSpawnList), "GetByGuid")]
@@ -525,6 +531,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    // [HarmonyPatch] - Muted due to undefined target method
     public static class SkinGuidBackfillPatch
     {
         [HarmonyPatch(typeof(SkinSpawnList), "Get", new Type[] { typeof(SkinSpawnList.Key) })]
@@ -535,6 +542,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    // [HarmonyPatch] - Muted due to undefined target method
     public static class SkinKeyAliasPatch
     {
         [HarmonyPatch(typeof(SkinSpawnList), "Get", new Type[] { typeof(SkinSpawnList.Key) })]
@@ -550,6 +558,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch]
     public static class CryonautSkinOwnershipAliasPatch
     {
         [HarmonyPatch(typeof(LoadoutSelectShared), "CheckSkinOwnership")]
@@ -603,6 +612,7 @@ namespace Andromeda.Mod.Patches
         }
     }
     
+    [HarmonyPatch]
     public static class UnlockableButtonSpawnerPatch
     {
         [HarmonyPatch(typeof(UnlockableButtonSpawner), "InitializePerkButton")]
@@ -634,6 +644,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch]
     public static class WhatsNewCoordinatorPatch
     {
         [HarmonyPatch(typeof(WhatsNewCoordinator), "OnEnable")]
@@ -641,6 +652,7 @@ namespace Andromeda.Mod.Patches
         public static bool Prefix() => false; 
     }
 
+    [HarmonyPatch]
     public static class AppQuitPatch
     {
         [HarmonyPatch(typeof(Application), "Quit", new Type[0])]
@@ -668,6 +680,7 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch]
     public static class ReturnToLobbyRedirectPatch
     {
         [HarmonyPatch(typeof(RoundEndScreen), "LeaveGame")]
