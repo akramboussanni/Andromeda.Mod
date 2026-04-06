@@ -162,13 +162,6 @@ namespace Andromeda.Mod.Patches
             return true;
         }
 
-        [HarmonyPatch(typeof(PhaseClock), "SetEndTime")]
-        [HarmonyPrefix]
-        public static void FixZeroDurationPhase(ref bool trackPhase, float time, int phaseIndex)
-        {
-            if (phaseIndex == -1 && time - Time.time < 1f)
-                trackPhase = false;
-        }
     }
 
     [HarmonyPatch]
