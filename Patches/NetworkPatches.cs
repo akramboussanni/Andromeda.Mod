@@ -18,6 +18,7 @@ namespace Andromeda.Mod.Patches
     public static class EntityBaseSendReliablePatch
     {
         private static NetServer _cachedServer;
+        private static readonly Entity.Message _cachedMsg = new Entity.Message();
 
         public static bool Prefix(Entity.Base __instance, BaseMessage body)
         {
@@ -27,13 +28,11 @@ namespace Andromeda.Mod.Patches
                 if (_cachedServer == null) _cachedServer = Singleton.Get<NetServer>();
                 if (_cachedServer == null) return true;
 
-                var msg = new Entity.Message() {
-                    id = __instance.id,
-                    componentType = __instance.ComponentType,
-                    Body = body
-                };
-                _cachedServer.SendAllReliable(msg);
-                return false; 
+                _cachedMsg.id = __instance.id;
+                _cachedMsg.componentType = __instance.ComponentType;
+                _cachedMsg.Body = body;
+                _cachedServer.SendAllReliable(_cachedMsg);
+                return false;
             } catch { return true; }
         }
     }
@@ -162,6 +161,20 @@ namespace Andromeda.Mod.Patches
             return true;
         }
 
+        // The ReadyRoom PhaseTime (symbiont selection countdown) fires before any real
+        // game phase but still calls SetEndTime with phaseIndex=-1, which auto-increments
+        // currentPhase from null to 0 and pushes every subsequent indicator 1 slot ahead.
+        // Suppress the increment for that phase only — the timer still runs, it just
+        // doesn't advance the phase dots.
+        [HarmonyPatch(typeof(PhaseClock), "SetEndTime")]
+        [HarmonyPrefix]
+        public static void SkipReadyRoomPhaseAdvance(ref bool trackPhase)
+        {
+            var client = AndromedaClient.Instance;
+            if (client == null) return;
+            if (client.Phase == AndromedaShared.RoundPhase.ReadyRoom)
+                trackPhase = false;
+        }
     }
 
     [HarmonyPatch]

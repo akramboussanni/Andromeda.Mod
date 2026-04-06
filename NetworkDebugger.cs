@@ -180,6 +180,12 @@ namespace Andromeda.Mod
             PlayerPrefs.SetInt("Andromeda_UpnpEnabled", _upnpEnabled ? 1 : 0);
             PlayerPrefs.SetInt("Andromeda_ShowPublicIp", _showPublicIp ? 1 : 0);
             PlayerPrefs.Save();
+
+            // Update the live MaxPlayers value for the host
+            if (int.TryParse(_lobbySizeInput, out int mp) && mp >= 2)
+            {
+                DedicatedServerStartup.MaxPlayers = mp;
+            }
         }
 
         public static void Update()

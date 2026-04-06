@@ -17,7 +17,7 @@ namespace Andromeda.Mod
         public static GamemodeList.Key GamemodeKey { get; private set; }
         public static bool IsPublicSession { get; private set; }
         public static string GamemodeData { get; private set; }
-        public static int MaxPlayers { get; private set; } = 8;
+        public static int MaxPlayers { get; set; } = 8;
         private static bool initialized = false;
         private static DateTime startupTime;
         private static DateTime lastHeartbeat;

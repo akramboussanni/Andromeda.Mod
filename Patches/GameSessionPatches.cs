@@ -62,6 +62,7 @@ namespace Andromeda.Mod.Patches
     /// Both CustomPartyServer and PartyServer call lobby.SetMaxPlayers(new int?(8))
     /// during Setup. This prefix intercepts that call and substitutes the configured
     /// value from DedicatedServerStartup.MaxPlayers, enabling 8+ player lobbies.
+    /// We only apply this if we are the Dedicated Server OR the Local Host.
     /// </summary>
     [HarmonyPatch(typeof(LobbyServer), "SetMaxPlayers")]
     public static class LobbyMaxPlayersPatch
@@ -69,13 +70,31 @@ namespace Andromeda.Mod.Patches
         [HarmonyPrefix]
         public static void Prefix(ref int? __0)
         {
-            if (!DedicatedServerStartup.IsServer) return;
+            if (!DedicatedServerStartup.IsServer && !Environment.IsHost) return;
+            
             int configured = DedicatedServerStartup.MaxPlayers;
             if (configured != 8)
             {
                 __0 = configured;
                 MelonLogger.Msg($"[MAX-PLAYERS] Lobby max overridden to {configured}");
             }
+        }
+    }
+
+    /// <summary>
+    /// The game has a hardcoded '8' in GameSession.MaxPlayers getter or similar.
+    /// We patch it to return our configured MaxPlayers.
+    /// </summary>
+    [HarmonyPatch(typeof(GameSession), "get_MaxPlayers")]
+    public static class GameSessionMaxPlayersPatch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix(ref int __result)
+        {
+            if (!DedicatedServerStartup.IsServer && !Environment.IsHost) return true;
+            
+            __result = DedicatedServerStartup.MaxPlayers;
+            return false;
         }
     }
 
