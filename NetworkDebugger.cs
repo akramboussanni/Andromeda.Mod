@@ -37,6 +37,7 @@ namespace Andromeda.Mod
         private static string _apiUrlInput = RestApi.API_URL;
         private static string _logIpInput = "127.0.0.1";
         private static string _logPortInput = "9090";
+        private static string _lobbySizeInput = "8";
         private static bool _upnpEnabled = false; // Disabled by default
         private static string _publicIp = "Fetching...";
 
@@ -137,6 +138,7 @@ namespace Andromeda.Mod
             _apiUrlInput = PlayerPrefs.GetString("Andromeda_ApiUrl", RestApi.API_URL);
             _logIpInput = PlayerPrefs.GetString("Andromeda_LogIp", "127.0.0.1");
             _logPortInput = PlayerPrefs.GetString("Andromeda_LogPort", "9090");
+            _lobbySizeInput = PlayerPrefs.GetString("Andromeda_LobbySize", "8");
             _upnpEnabled = PlayerPrefs.GetInt("Andromeda_UpnpEnabled", 0) == 1;
 
             _apiUrlInput = FixUrl(_apiUrlInput);
@@ -171,6 +173,7 @@ namespace Andromeda.Mod
             PlayerPrefs.SetString("Andromeda_ApiUrl", _apiUrlInput);
             PlayerPrefs.SetString("Andromeda_LogIp", _logIpInput);
             PlayerPrefs.SetString("Andromeda_LogPort", _logPortInput);
+            PlayerPrefs.SetString("Andromeda_LobbySize", _lobbySizeInput);
             PlayerPrefs.SetInt("Andromeda_UpnpEnabled", _upnpEnabled ? 1 : 0);
             PlayerPrefs.Save();
         }
@@ -294,6 +297,13 @@ namespace Andromeda.Mod
             {
                 ApplyApiUrl();
             }
+
+            GUILayout.Space(10);
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("New Lobby Size:", GUILayout.Width(120));
+            _lobbySizeInput = GUILayout.TextField(_lobbySizeInput);
+            GUILayout.EndHorizontal();
 
             GUILayout.Space(10);
 
@@ -840,6 +850,27 @@ namespace Andromeda.Mod
                     if (__instance.uploadHandler != null && __instance.uploadHandler.data != null)
                     {
                         body = Encoding.UTF8.GetString(__instance.uploadHandler.data);
+                        
+                        // Inject Lobby Size into Create requests
+                        if (url.Contains("/party/create") || url.Contains("/games/new") || url.Contains("/games/custom/new"))
+                        {
+                            try
+                            {
+                                var dict = JsonConvert.DeserializeObject<Dictionary<string, object>>(body);
+                                if (dict != null && int.TryParse(_lobbySizeInput, out int lobbySize))
+                                {
+                                    dict["maxPlayers"] = lobbySize;
+                                    string newBody = JsonConvert.SerializeObject(dict);
+                                    byte[] newBodyData = Encoding.UTF8.GetBytes(newBody);
+                                    
+                                    // Replace the upload handler with the modified body
+                                    __instance.uploadHandler = new UploadHandlerRaw(newBodyData);
+                                    __instance.SetRequestHeader("Content-Type", "application/json");
+                                    body = newBody; // Update local body for the inspector
+                                }
+                            }
+                            catch { }
+                        }
                     }
 
                     string path = "Unknown";

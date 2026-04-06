@@ -14,7 +14,6 @@ using Dissonance.Integrations.UNet_LLAPI;
 
 namespace Andromeda.Mod.Patches
 {
-    [HarmonyPatch]
     internal static class TransitionTrace
     {
         private static readonly object _sync = new object();
@@ -85,7 +84,6 @@ namespace Andromeda.Mod.Patches
         }
     }
 
-    [HarmonyPatch]
     public static class ProgramServerPatch
     {
         [HarmonyPatch(typeof(ProgramServer), "Host")]
@@ -200,7 +198,6 @@ namespace Andromeda.Mod.Patches
         }
     }
 
-    [HarmonyPatch]
     public static class GamemodeBeginGatePatch
     {
         [HarmonyPatch(typeof(Gamemode), "Begin")]
@@ -229,7 +226,6 @@ namespace Andromeda.Mod.Patches
         }
     }
 
-    [HarmonyPatch]
     public static class EntitySpawnGatePatch
     {
         [HarmonyPatch(typeof(EntityManagerServer), "Spawn", new Type[] { typeof(EntitySpawnData) })]
@@ -258,7 +254,6 @@ namespace Andromeda.Mod.Patches
         }
     }
 
-    [HarmonyPatch]
     public static class LobbyServerPatch
     {
         [HarmonyPatch(typeof(LobbyServer), "OnEnable")]
@@ -303,7 +298,6 @@ namespace Andromeda.Mod.Patches
         }
     }
 
-    [HarmonyPatch]
     public static class GameliftPatch
     {
         [HarmonyPatch(typeof(Gamelift), "Initialize")]
@@ -343,7 +337,6 @@ namespace Andromeda.Mod.Patches
         public static bool PrefixUnlock() => false;
     }
 
-    [HarmonyPatch]
     public static class ApiClientPartyJoinPatch
     {
         [HarmonyPatch(typeof(ApiShared), "GamesCustomNew")]
@@ -354,7 +347,6 @@ namespace Andromeda.Mod.Patches
         }
     }
 
-    [HarmonyPatch]
     public static class ProgramClientConnectPatch
     {
         [HarmonyPatch(typeof(ProgramClient), "Connect")]
@@ -391,7 +383,6 @@ namespace Andromeda.Mod.Patches
         }
     }
 
-    [HarmonyPatch]
     public static class VoiceChatProbePatches
     {
         private static string Preview(string message, int maxLen = 80)
@@ -478,7 +469,6 @@ namespace Andromeda.Mod.Patches
         }
     }
 
-    [HarmonyPatch]
     public static class ProgramClientProbePatch
     {
         public static bool PrefixClientAwakeStub()
@@ -498,7 +488,6 @@ namespace Andromeda.Mod.Patches
             TransitionTrace.Log($"[CLIENT-PROBE] ProgramClient.Join called: region={region} gameId={gameId}");
         }
     }
-    [HarmonyPatch]
     public static class MainMenuTransitionProbePatch
     {
         [HarmonyPatch(typeof(MainMenu), "JoinMatch")]
@@ -511,7 +500,6 @@ namespace Andromeda.Mod.Patches
         }
     }
 
-    [HarmonyPatch]
     public static class CustomPartyClientJoinGamePatch
     {
         [HarmonyPatch(typeof(CustomPartyClient), "OnJoinGame")]
@@ -533,7 +521,6 @@ namespace Andromeda.Mod.Patches
         }
     }
 
-    [HarmonyPatch]
     public static class AndromedaClientTransitionPatch
     {
         [HarmonyPatch(typeof(AndromedaClient), "OnLoadLevel")]
@@ -551,7 +538,6 @@ namespace Andromeda.Mod.Patches
         }
     }
 
-    [HarmonyPatch]
     public static class AndromedaPhaseClockDesyncPatch
     {
         private static AndromedaShared.RoundPhase _lastPhase = AndromedaShared.RoundPhase.None;
@@ -592,9 +578,21 @@ namespace Andromeda.Mod.Patches
             _lastAllowedPhaseTimeAt = Time.time;
             return true;
         }
+
+        // Crisis phases (generator repair) have no countdown, so the server sends
+        // PhaseTime with remaining=0. With phaseIndex=-1 the vanilla PhaseClock
+        // auto-increments currentPhase on every such call, pushing the HUD phase
+        // indicator ahead by up to 4 slots while gameplay stays correct.
+        // Suppressing the increment for zero-duration messages fixes the visual desync.
+        [HarmonyPatch(typeof(PhaseClock), "SetEndTime")]
+        [HarmonyPrefix]
+        public static void FixZeroDurationPhase(ref bool trackPhase, float time, int phaseIndex)
+        {
+            if (phaseIndex == -1 && time - Time.time < 1f)
+                trackPhase = false;
+        }
     }
 
-    [HarmonyPatch]
     public static class AndromedaServerTransitionPatch
     {
         private static readonly HashSet<int> ObjectivesEntered = new HashSet<int>();

@@ -114,27 +114,18 @@ namespace Andromeda.Mod
                 }
             } catch (Exception ex) { MelonLogger.Error($"[PATCH] Steam Hard-Links failed: {ex.Message}"); }
 
-            // 3. Register the rest of the patch groups
-            ManualPatch(harmony, typeof(LogWriterRedirectPatch), "Log Redirection");
-            ManualPatch(harmony, typeof(AnalyticsPatch), "Analytics Skip");
-            ManualPatch(harmony, typeof(SteamSdkBypass), "Steam SDK Group"); // This will still patch the properties (Id, Username, IsOffline)
-            ManualPatch(harmony, typeof(GameliftPatch), "Gamelift SDK Bypass");
-            ManualPatch(harmony, typeof(ProgramServerPatch), "Server Logic");
-            ManualPatch(harmony, typeof(LobbyServerPatch), "Lobby Logic");
-            ManualPatch(harmony, typeof(NetworkListenPatch), "Socket Monitor");
-            ManualPatch(harmony, typeof(EnvironmentPatch), "Env Identity");
-            ManualPatch(harmony, typeof(AndromedaServerTransitionPatch), "Andromeda Server Transition");
-            ManualPatch(harmony, typeof(AppQuitPatch), "Quit Interceptor");
-
-            // Final fallback
+            // Register all patches via assembly scan
+            // Note: Classes with [HarmonyPatch] will be automatically processed.
             try { 
                 harmony.PatchAll(Assembly.GetExecutingAssembly()); 
-                MelonLogger.Msg("[INIT] PatchAll Fallback - OK");
-            } catch { }
-
-            // Manual transpiler patch
+                MelonLogger.Msg("[INIT] PatchAll execution - OK");
+            } catch (Exception ex) { 
+                MelonLogger.Error($"[INIT-ERROR] PatchAll failed: {ex.Message}");
+            }
+ 
+            // Manual transpiler patch (usually needs specific handling)
             AndromedaServerMinPlayerPatch.Apply(harmony);
-
+ 
             MelonLogger.Msg("--------------------------------------------------");
             MelonLogger.Msg("[BOOT] PATCH REGISTRATION COMPLETE.");
             MelonLogger.Msg("--------------------------------------------------");
