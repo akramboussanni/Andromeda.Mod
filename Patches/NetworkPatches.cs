@@ -1,7 +1,8 @@
 using HarmonyLib;
 using MelonLoader;
-using System.Reflection;
 using System.Collections.Generic;
+using System.Collections;
+using System.Reflection;
 using System;
 using System.IO;
 using System.Diagnostics;
@@ -33,6 +34,76 @@ namespace Andromeda.Mod.Patches
                 _cachedMsg.componentType = __instance.ComponentType;
                 _cachedMsg.Body = body;
                 _cachedServer.SendAllReliable(_cachedMsg);
+                return false;
+            } catch { return true; }
+        }
+    }
+
+    [HarmonyPatch(typeof(Entity.Base), "SendReliableToRoom")]
+    public static class EntityBaseSendReliableToRoomPatch
+    {
+        private static NetServer _cachedServer;
+        private static readonly Entity.Message _cachedMsg = new Entity.Message();
+
+        public static bool Prefix(Entity.Base __instance, BaseMessage body)
+        {
+            if (!DedicatedServerStartup.IsServer) return true;
+
+            try {
+                if (_cachedServer == null) _cachedServer = Singleton.Get<NetServer>();
+                if (_cachedServer == null) return true;
+
+                _cachedMsg.id = __instance.id;
+                _cachedMsg.componentType = __instance.ComponentType;
+                _cachedMsg.Body = body;
+                _cachedServer.SendAllReliable(_cachedMsg);
+                return false;
+            } catch { return true; }
+        }
+    }
+
+    [HarmonyPatch(typeof(Entity.Base), "SendUnreliable")]
+    public static class EntityBaseSendUnreliablePatch
+    {
+        private static NetServer _cachedServer;
+        private static readonly Entity.Message _cachedMsg = new Entity.Message();
+
+        public static bool Prefix(Entity.Base __instance, BaseMessage body)
+        {
+            if (!DedicatedServerStartup.IsServer) return true;
+
+            try {
+                if (_cachedServer == null) _cachedServer = Singleton.Get<NetServer>();
+                if (_cachedServer == null) return true;
+
+                _cachedMsg.id = __instance.id;
+                _cachedMsg.componentType = __instance.ComponentType;
+                _cachedMsg.Body = body;
+                _cachedServer.SendAllUnreliable(_cachedMsg);
+                return false;
+            } catch { return true; }
+        }
+    }
+
+    [HarmonyPatch(typeof(Entity.Base), "SendUnreliableToRoom")]
+    public static class EntityBaseSendUnreliableToRoomPatch
+    {
+        private static NetServer _cachedServer;
+        private static readonly Entity.Message _cachedMsg = new Entity.Message();
+
+        public static bool Prefix(Entity.Base __instance, BaseMessage body)
+        {
+            if (!DedicatedServerStartup.IsServer) return true;
+
+            try {
+                if (_cachedServer == null) _cachedServer = Singleton.Get<NetServer>();
+                if (_cachedServer == null) return true;
+
+                _cachedMsg.id = __instance.id;
+                _cachedMsg.componentType = __instance.ComponentType;
+                _cachedMsg.Body = body;
+                // Treat room broadcast as global broadcast for dedicated server
+                _cachedServer.SendAllUnreliable(_cachedMsg);
                 return false;
             } catch { return true; }
         }
@@ -195,15 +266,15 @@ namespace Andromeda.Mod.Patches
     [HarmonyPatch]
     public static class AndromedaPhaseClockDesyncPatch
     {
-        private static AndromedaShared.RoundPhase _lastPhase = AndromedaShared.RoundPhase.None;
-        private static float _lastAllowedPhaseTimeAt = -999f;
+        private static AndromedaShared.RoundPhase _lastPhaseHandled = AndromedaShared.RoundPhase.None;
+        private static float _lastPhaseTimeReceivedAt = -999f;
 
         [HarmonyPatch(typeof(AndromedaClient), "OnLoadLevel")]
         [HarmonyPrefix]
-        public static void ResetPhaseTimeGate()
+        public static void ResetPhaseGate()
         {
-            _lastPhase = AndromedaShared.RoundPhase.None;
-            _lastAllowedPhaseTimeAt = -999f;
+            _lastPhaseHandled = AndromedaShared.RoundPhase.None;
+            _lastPhaseTimeReceivedAt = -999f;
         }
 
         [HarmonyPatch(typeof(AndromedaClient), "OnPhaseTime")]
@@ -212,27 +283,109 @@ namespace Andromeda.Mod.Patches
         {
             if ((UnityEngine.Object)__instance == (UnityEngine.Object)null) return true;
 
-            var phase = __instance.Phase;
-            bool samePhase = phase == _lastPhase;
-            bool timerAlreadyActive = __instance.PhaseEndTime > Time.time + 1f;
-            bool rapidRepeat = Time.time - _lastAllowedPhaseTimeAt < 3f;
+            // Rate-limit identical phase updates to prevent "double-step" bugs
+            // Some server transitions send redundant PhaseTime packets
+            var currentPhase = __instance.Phase;
+            bool samePhase = currentPhase == _lastPhaseHandled;
+            bool recentUpdate = Time.time - _lastPhaseTimeReceivedAt < 2.0f;
 
-            if (samePhase && timerAlreadyActive && rapidRepeat) return false;
+            if (samePhase && recentUpdate) 
+            {
+                // We already handled a PhaseTime message for this phase recently, skip UI re-advance
+                return false; 
+            }
 
-            _lastPhase = phase;
-            _lastAllowedPhaseTimeAt = Time.time;
+            _lastPhaseHandled = currentPhase;
+            _lastPhaseTimeReceivedAt = Time.time;
             return true;
         }
 
-        // The ReadyRoom PhaseTime (symbiont selection countdown) fires before any real
         [HarmonyPatch(typeof(PhaseClock), "SetEndTime")]
         [HarmonyPrefix]
-        public static void SkipReadyRoomPhaseAdvance(ref bool trackPhase)
+        public static void RefinedPhaseAdvanceSync(ref bool trackPhase)
         {
             var client = AndromedaClient.Instance;
             if (client == null) return;
+
+            // CRITICAL: The 10s "Ready Room" countdown (symbiont selection) 
+            // uses phaseIndex=-1 which auto-increments the dots. 
+            // We suppress that increment here so the FIRST dot only 
+            // lights up when the actual match phases start.
             if (client.Phase == AndromedaShared.RoundPhase.ReadyRoom)
+            {
                 trackPhase = false;
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(AndromedaClient), "OnSetPlayerSelections")]
+    public static class AndromedaSelectionDesyncPatch
+    {
+        private static float _lastSelectionsReceivedAt = -10f;
+
+        [HarmonyPrefix]
+        public static bool Prefix()
+        {
+            float now = Time.time;
+            if (now - _lastSelectionsReceivedAt < 1.0f) 
+            {
+                // Rate-limit selection updates to prevent "Key already added" crashes in UI
+                // caused by redundant network packets or double-initialization.
+                return false; 
+            }
+            _lastSelectionsReceivedAt = now;
+            return true;
+        }
+    }
+
+    [HarmonyPatch]
+    public static class VoiceUIHUDSafetyPatch
+    {
+        private static FieldInfo[] _cachedFields;
+        public static MethodBase TargetMethod() => AccessTools.Method(AccessTools.TypeByName("VoiceUIHUD"), "Initialize");
+
+        [HarmonyPrefix]
+        public static void Prefix(object __instance)
+        {
+            if (__instance == null) return;
+            try
+            {
+                // Optimization: Cache reflection fields to prevent performance hits if Initialize() is called repeatedly.
+                if (_cachedFields == null)
+                {
+                    _cachedFields = __instance.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                }
+
+                foreach (var field in _cachedFields)
+                {
+                    if (typeof(System.Collections.IDictionary).IsAssignableFrom(field.FieldType))
+                    {
+                        var dict = field.GetValue(__instance) as System.Collections.IDictionary;
+                        dict?.Clear();
+                    }
+                }
+            }
+            catch { }
+        }
+    }
+
+    [HarmonyPatch]
+    public static class VoiceClientSafetyPatch
+    {
+        public static MethodBase TargetMethod() => AccessTools.Method(AccessTools.TypeByName("VoiceClient"), "GetPlayerVolume");
+
+        [HarmonyFinalizer]
+        public static Exception Finalizer(Exception __exception, ref float __result)
+        {
+            if (__exception != null)
+            {
+                // Safety: Silence NREs in VoiceClient during UI rendering loops.
+                // These usually occur when the Sidebar UI is trying to render player volume data
+                // that hasn't arrived over the network yet.
+                __result = 0f;
+                return null; // Suppress the exception
+            }
+            return __exception;
         }
     }
 

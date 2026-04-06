@@ -58,6 +58,7 @@ namespace Andromeda.Mod
             {
                 Features.UpdateChecker.CheckAsync();
                 AndromedaClient.OnRoundEnd += Features.UpdateChecker.CheckAsync;
+                Features.AdminCommandPoller.Start();
             }
         }
 
@@ -159,6 +160,7 @@ namespace Andromeda.Mod
         {
             NetworkDebugger.OnGUI();
             Features.UpdateChecker.OnGUI();
+            Features.AdminCommandPoller.OnGUI();
         }
 
         public override void OnApplicationQuit()

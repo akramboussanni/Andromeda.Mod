@@ -36,8 +36,11 @@ namespace Andromeda.Mod
 
         // API Settings
         private static string _apiUrlInput = RestApi.API_URL;
-        private static string _logIpInput = "127.0.0.1";
+        private static string _logIpInput   = "127.0.0.1";
         private static string _logPortInput = "9090";
+
+        /// <summary>Hostname used by LogRedirectPatch (and LogLobbyEvent TCP sender).</summary>
+        public static string LogHost => _logIpInput;
         private static string _lobbySizeInput = "8";
         private static bool _upnpEnabled = false; // Disabled by default
         private static string _publicIp = "Fetching...";
@@ -55,10 +58,13 @@ namespace Andromeda.Mod
             if (status == "Error") MelonLogger.Error($"[DEBUG-LOG] {info}");
             else MelonLogger.Msg($"[DEBUG-LOG] {info}");
 
-            // Send to Python Log Server (Fire and Forget)
+            string steamId = null;
+            try { steamId = Steam.Id; } catch { }
+            string prefix = steamId != null ? $"[SteamID:{steamId}] " : "";
+
             System.Threading.ThreadPool.QueueUserWorkItem(_ =>
             {
-                SendToLogServer($"[{status}] {info}");
+                SendToLogServer($"{prefix}[{status}] {info}");
             });
         }
 
@@ -70,8 +76,7 @@ namespace Andromeda.Mod
                 using (var client = new System.Net.Sockets.TcpClient())
                 {
                     var result = client.BeginConnect(_logIpInput, port, null, null);
-                    var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(100)); // fast timeout
-                    if (success)
+                    if (result.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(300)))
                     {
                         using (var stream = client.GetStream())
                         {
@@ -81,7 +86,7 @@ namespace Andromeda.Mod
                     }
                 }
             }
-            catch { /* Ignore logging errors to prevent spam/crash */ }
+            catch { /* fire-and-forget — never crash the game */ }
         }
 
         // GUI State
@@ -130,22 +135,27 @@ namespace Andromeda.Mod
         public static void LoadSettingsEarly()
         {
             // Force override on first launch of this patch version (incremented to version 3)
-            if (PlayerPrefs.GetInt("Andromeda_Version", 0) < 9)
+            if (PlayerPrefs.GetInt("Andromeda_Version", 0) < 10)
             {
                 PlayerPrefs.SetString("Andromeda_ApiUrl", "https://andromeda.kimotherapy.dev");
-                PlayerPrefs.SetInt("Andromeda_Version", 9);
+                PlayerPrefs.SetString("Andromeda_LogIp",  "log.andromeda.kimotherapy.dev");
+                PlayerPrefs.SetString("Andromeda_LogPort", "9090");
+                PlayerPrefs.SetInt("Andromeda_Version", 10);
                 PlayerPrefs.Save();
             }
 
             _apiUrlInput = PlayerPrefs.GetString("Andromeda_ApiUrl", RestApi.API_URL);
-            _logIpInput = PlayerPrefs.GetString("Andromeda_LogIp", "127.0.0.1");
-            _logPortInput = PlayerPrefs.GetString("Andromeda_LogPort", "9090");
             _lobbySizeInput = PlayerPrefs.GetString("Andromeda_LobbySize", "8");
             _upnpEnabled = PlayerPrefs.GetInt("Andromeda_UpnpEnabled", 0) == 1;
             _showPublicIp = PlayerPrefs.GetInt("Andromeda_ShowPublicIp", 0) == 1;
 
             _apiUrlInput = FixUrl(_apiUrlInput);
             RestApi.API_URL = _apiUrlInput;
+
+            // Default log host to the API server's hostname so it follows the API URL automatically.
+            // Players who set a custom log server IP in-game override this via PlayerPrefs.
+            _logIpInput   = PlayerPrefs.GetString("Andromeda_LogIp",  "log.andromeda.kimotherapy.dev");
+            _logPortInput = PlayerPrefs.GetString("Andromeda_LogPort", "9090");
         }
 
         private static string FixUrl(string url)
@@ -173,9 +183,9 @@ namespace Andromeda.Mod
 
         private static void SaveSettings()
         {
-            PlayerPrefs.SetString("Andromeda_ApiUrl", _apiUrlInput);
-            PlayerPrefs.SetString("Andromeda_LogIp", _logIpInput);
-            PlayerPrefs.SetString("Andromeda_LogPort", _logPortInput);
+            PlayerPrefs.SetString("Andromeda_ApiUrl",   _apiUrlInput);
+            PlayerPrefs.SetString("Andromeda_LogIp",    _logIpInput);
+            PlayerPrefs.SetString("Andromeda_LogPort",  _logPortInput);
             PlayerPrefs.SetString("Andromeda_LobbySize", _lobbySizeInput);
             PlayerPrefs.SetInt("Andromeda_UpnpEnabled", _upnpEnabled ? 1 : 0);
             PlayerPrefs.SetInt("Andromeda_ShowPublicIp", _showPublicIp ? 1 : 0);
