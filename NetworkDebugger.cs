@@ -40,6 +40,7 @@ namespace Andromeda.Mod
         private static string _lobbySizeInput = "8";
         private static bool _upnpEnabled = false; // Disabled by default
         private static string _publicIp = "Fetching...";
+        private static bool _showPublicIp = false; // Hidden by default as requested
 
         public static bool IsUpnpEnabled => _upnpEnabled;
 
@@ -140,6 +141,7 @@ namespace Andromeda.Mod
             _logPortInput = PlayerPrefs.GetString("Andromeda_LogPort", "9090");
             _lobbySizeInput = PlayerPrefs.GetString("Andromeda_LobbySize", "8");
             _upnpEnabled = PlayerPrefs.GetInt("Andromeda_UpnpEnabled", 0) == 1;
+            _showPublicIp = PlayerPrefs.GetInt("Andromeda_ShowPublicIp", 0) == 1;
 
             _apiUrlInput = FixUrl(_apiUrlInput);
             RestApi.API_URL = _apiUrlInput;
@@ -175,6 +177,7 @@ namespace Andromeda.Mod
             PlayerPrefs.SetString("Andromeda_LogPort", _logPortInput);
             PlayerPrefs.SetString("Andromeda_LobbySize", _lobbySizeInput);
             PlayerPrefs.SetInt("Andromeda_UpnpEnabled", _upnpEnabled ? 1 : 0);
+            PlayerPrefs.SetInt("Andromeda_ShowPublicIp", _showPublicIp ? 1 : 0);
             PlayerPrefs.Save();
         }
 
@@ -241,10 +244,26 @@ namespace Andromeda.Mod
             GUILayout.Space(10);
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label($"<b>Your Public IP:</b> <color=cyan>{_publicIp}</color>", GUI.skin.box);
-            if (GUILayout.Button("Copy", GUILayout.Width(60)))
+            string displayIp = _showPublicIp ? _publicIp : "••••.••••.••••.••••";
+            GUILayout.Label($"<b>Your Public IP:</b> <color=cyan>{displayIp}</color>", GUI.skin.box);
+            
+            if (_showPublicIp)
             {
-                GUIUtility.systemCopyBuffer = _publicIp;
+                if (GUILayout.Button("Copy", GUILayout.Width(60)))
+                {
+                    GUIUtility.systemCopyBuffer = _publicIp;
+                }
+                if (GUILayout.Button("Hide", GUILayout.Width(60)))
+                {
+                    _showPublicIp = false;
+                }
+            }
+            else
+            {
+                if (GUILayout.Button("Show", GUILayout.Width(60)))
+                {
+                    _showPublicIp = true;
+                }
             }
             GUILayout.EndHorizontal();
 
