@@ -55,7 +55,10 @@ namespace Andromeda.Mod
             NetworkDebugger.Initialize();
 
             if (!DedicatedServerStartup.IsServer)
+            {
                 Features.UpdateChecker.CheckAsync();
+                AndromedaClient.OnRoundEnd += Features.UpdateChecker.CheckAsync;
+            }
         }
 
         private void PatchServiceAddress()

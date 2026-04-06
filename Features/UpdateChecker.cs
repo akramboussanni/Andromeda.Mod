@@ -17,6 +17,7 @@ namespace Andromeda.Mod.Features
         private static bool _blocked;
         private static string _blockedVersion;
         private static string _blockedUrl;
+        private static bool _checking;
 
         // Called from Mod.OnGUI — draws a fullscreen block if an update is required
         public static void OnGUI()
@@ -82,11 +83,13 @@ namespace Andromeda.Mod.Features
 
         public static void CheckAsync()
         {
+            if (_blocked || _checking) return;
             MelonCoroutines.Start(CheckSequentialCoro());
         }
 
         private static IEnumerator CheckSequentialCoro()
         {
+            _checking = true;
             // Wait for the main menu to be ready before showing any dialog
             yield return new WaitForSeconds(10f);
 
@@ -96,6 +99,8 @@ namespace Andromeda.Mod.Features
 
             if (!stableOutdated)
                 yield return CheckCoro(BleedingEdgeApiUrl, "bleeding-edge", false, null);
+
+            _checking = false;
         }
 
         private static IEnumerator CheckCoro(string apiUrl, string channel, bool isStable, Action<bool> onResult)
