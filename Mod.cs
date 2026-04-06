@@ -114,17 +114,19 @@ namespace Andromeda.Mod
                 }
             } catch (Exception ex) { MelonLogger.Error($"[PATCH] Steam Hard-Links failed: {ex.Message}"); }
 
-            // Register all patches via assembly scan
-            // Note: Classes with [HarmonyPatch] will be automatically processed.
+ 
+ 
+            // APPLY ALL PATCHES (Clean & Optimized)
             try { 
-                harmony.PatchAll(Assembly.GetExecutingAssembly()); 
-                MelonLogger.Msg("[INIT] PatchAll execution - OK");
+                harmony.PatchAll(Assembly.GetExecutingAssembly());
+                MelonLogger.Msg("[INIT] Global PatchAll - OK");
             } catch (Exception ex) { 
-                MelonLogger.Error($"[INIT-ERROR] PatchAll failed: {ex.Message}");
+                MelonLogger.Error($"[INIT-ERROR] Patching failed: {ex.Message}");
             }
  
-            // Manual transpiler patch (usually needs specific handling)
+            // Manual transpiler patches (async state machines need specific handling)
             AndromedaServerMinPlayerPatch.Apply(harmony);
+            AndromedaServerMaxPlayerPatch.Apply(harmony);
  
             MelonLogger.Msg("--------------------------------------------------");
             MelonLogger.Msg("[BOOT] PATCH REGISTRATION COMPLETE.");

@@ -32,6 +32,7 @@ namespace Andromeda.Mod
 
         public static List<NetworkRequest> Requests = new List<NetworkRequest>();
         public static Dictionary<string, Type> EndpointTypeMap = new Dictionary<string, Type>();
+        private const int MaxRequests = 50; 
 
         // API Settings
         private static string _apiUrlInput = RestApi.API_URL;
@@ -183,10 +184,16 @@ namespace Andromeda.Mod
 
         public static void Update()
         {
-            // F10 to toggle menu (switched from F11)
+            // F10 to toggle menu
             if (Input.GetKeyDown(KeyCode.F10))
             {
                 _showGui = !_showGui;
+                if (!_showGui)
+                {
+                    // Clean up heavy data when closing to free memory/CPU
+                    _selectedRequest = null;
+                    _selectedDataItem = null;
+                }
                 MelonLogger.Msg($"F10 Pressed. Toggle GUI: {_showGui}");
             }
         }
@@ -464,7 +471,9 @@ namespace Andromeda.Mod
 
             _scrollPositionList = GUILayout.BeginScrollView(_scrollPositionList, GUI.skin.box);
 
-            for (int i = Requests.Count - 1; i >= 0; i--)
+            // Limit display to last 30 to keep GUILayout fast
+            int startIdx = Math.Max(0, Requests.Count - 30);
+            for (int i = Requests.Count - 1; i >= startIdx; i--)
             {
                 var req = Requests[i];
                 GUI.color = GetStatusColor(req.Status);
@@ -864,6 +873,10 @@ namespace Andromeda.Mod
                 {
                     string url = __instance.url;
                     if (string.IsNullOrEmpty(url) || !url.StartsWith("http")) return;
+ 
+                    // PERFORMANCE GATE: Only log/format if the debugger is open or it's a critical create request
+                    bool isCreate = url.Contains("/party/create") || url.Contains("/games/new") || url.Contains("/games/custom/new");
+                    if (!_showGui && !isCreate) return;
 
                     string body = "";
                     if (__instance.uploadHandler != null && __instance.uploadHandler.data != null)
@@ -923,6 +936,7 @@ namespace Andromeda.Mod
                     };
 
                     Requests.Add(req);
+                    if (Requests.Count > MaxRequests) Requests.RemoveAt(0);
                 }
                 catch (Exception e) { MelonLogger.Error($"Prefix Error: {e}"); }
             }

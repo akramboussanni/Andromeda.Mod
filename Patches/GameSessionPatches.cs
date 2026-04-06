@@ -55,6 +55,31 @@ namespace Andromeda.Mod.Patches
     }
 
     // ---------------------------------------------------------------------------
+    // LobbyServer — override the hardcoded 8-player cap with --max-players value
+    // ---------------------------------------------------------------------------
+
+    /// <summary>
+    /// Both CustomPartyServer and PartyServer call lobby.SetMaxPlayers(new int?(8))
+    /// during Setup. This prefix intercepts that call and substitutes the configured
+    /// value from DedicatedServerStartup.MaxPlayers, enabling 8+ player lobbies.
+    /// </summary>
+    [HarmonyPatch(typeof(LobbyServer), "SetMaxPlayers")]
+    public static class LobbyMaxPlayersPatch
+    {
+        [HarmonyPrefix]
+        public static void Prefix(ref int? __0)
+        {
+            if (!DedicatedServerStartup.IsServer) return;
+            int configured = DedicatedServerStartup.MaxPlayers;
+            if (configured != 8)
+            {
+                __0 = configured;
+                MelonLogger.Msg($"[MAX-PLAYERS] Lobby max overridden to {configured}");
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------------
     // AndromedaServer — patch the min-player check from < 2 to < 1
     // ---------------------------------------------------------------------------
 
@@ -172,6 +197,113 @@ namespace Andromeda.Mod.Patches
             {
                 MelonLogger.Warning("[ANDROMEDA-PATCH] Transpiler did not find ldc.i4.2+branch pattern — min-player check NOT patched!");
             }
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // AndromedaServer — patch the max-player check from > 8 to > MaxPlayers
+    // ---------------------------------------------------------------------------
+
+    /// <summary>
+    /// The same Setup state machine contains:
+    ///     if (andromedaServer.players.Count &lt; 2 || andromedaServer.players.Count &gt; 8)
+    ///         programServer.Quit("player failed to connect");
+    ///
+    /// This transpiler replaces the ldc.i4.8 that feeds the &gt; comparison with a
+    /// call to DedicatedServerStartup.get_MaxPlayers(), making the upper bound
+    /// dynamic and consistent with the lobby cap set by LobbyMaxPlayersPatch.
+    /// </summary>
+    [HarmonyPatch]
+    public static class AndromedaServerMaxPlayerPatch
+    {
+        public static void Apply(HarmonyLib.Harmony harmony)
+        {
+            try
+            {
+                Type stateMachineType = null;
+                foreach (Type nested in typeof(AndromedaServer).GetNestedTypes(
+                    BindingFlags.NonPublic | BindingFlags.Public))
+                {
+                    if (nested.Name.StartsWith("<Setup>"))
+                    {
+                        stateMachineType = nested;
+                        break;
+                    }
+                }
+
+                if (stateMachineType == null)
+                {
+                    MelonLogger.Warning("[ANDROMEDA-PATCH] MaxPlayer: could not find Setup state machine type!");
+                    return;
+                }
+
+                MethodInfo moveNext = stateMachineType.GetMethod("MoveNext",
+                    BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
+                if (moveNext == null)
+                {
+                    MelonLogger.Warning("[ANDROMEDA-PATCH] MaxPlayer: could not find MoveNext!");
+                    return;
+                }
+
+                var transpiler = new HarmonyMethod(typeof(AndromedaServerMaxPlayerPatch),
+                    nameof(TranspileMaxPlayerCheck));
+                harmony.Patch(moveNext, transpiler: transpiler);
+                MelonLogger.Msg("[ANDROMEDA-PATCH] Successfully patched AndromedaServer Setup — max player = dynamic.");
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"[ANDROMEDA-PATCH] MaxPlayer: failed to apply patch: {ex}");
+            }
+        }
+
+        /// <summary>
+        /// Finds ldc.i4.8 immediately before a &gt; comparison branch or cgt and
+        /// replaces it with a call to DedicatedServerStartup.get_MaxPlayers().
+        /// Only the first occurrence is patched to avoid touching unrelated uses of 8.
+        /// </summary>
+        private static IEnumerable<CodeInstruction> TranspileMaxPlayerCheck(
+            IEnumerable<CodeInstruction> instructions)
+        {
+            MethodInfo getMaxPlayers = typeof(DedicatedServerStartup)
+                .GetProperty("MaxPlayers", BindingFlags.Public | BindingFlags.Static)
+                .GetGetMethod();
+
+            bool patched = false;
+            CodeInstruction prev = null;
+
+            foreach (CodeInstruction instr in instructions)
+            {
+                if (!patched && prev != null
+                    && prev.opcode == OpCodes.Ldc_I4_8
+                    && (instr.opcode == OpCodes.Bgt
+                        || instr.opcode == OpCodes.Bgt_S
+                        || instr.opcode == OpCodes.Bgt_Un
+                        || instr.opcode == OpCodes.Bgt_Un_S
+                        || instr.opcode == OpCodes.Cgt
+                        || instr.opcode == OpCodes.Ble
+                        || instr.opcode == OpCodes.Ble_S
+                        || instr.opcode == OpCodes.Ble_Un
+                        || instr.opcode == OpCodes.Ble_Un_S))
+                {
+                    MelonLogger.Msg("[ANDROMEDA-PATCH] Transpiler: replacing ldc.i4.8 → call MaxPlayers for max-player check");
+                    yield return new CodeInstruction(OpCodes.Call, getMaxPlayers);
+                    patched = true;
+                    prev = null;
+                    yield return instr;
+                    continue;
+                }
+
+                if (prev != null)
+                    yield return prev;
+
+                prev = instr;
+            }
+
+            if (prev != null)
+                yield return prev;
+
+            if (!patched)
+                MelonLogger.Warning("[ANDROMEDA-PATCH] Transpiler did not find ldc.i4.8+bgt pattern — max-player check NOT patched!");
         }
     }
 }

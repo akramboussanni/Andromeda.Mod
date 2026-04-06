@@ -17,6 +17,7 @@ namespace Andromeda.Mod
         public static GamemodeList.Key GamemodeKey { get; private set; }
         public static bool IsPublicSession { get; private set; }
         public static string GamemodeData { get; private set; }
+        public static int MaxPlayers { get; private set; } = 8;
         private static bool initialized = false;
         private static DateTime startupTime;
         private static DateTime lastHeartbeat;
@@ -90,8 +91,6 @@ namespace Andromeda.Mod
 
                 ProbeAndromedaState("heartbeat");
 
-                // Trigger Lobby Sync and Remote Heartbeat
-                SyncLobby();
                 if (!string.IsNullOrEmpty(SessionId))
                 {
                     RestApi.SendHeartbeat(SessionId);
@@ -105,18 +104,6 @@ namespace Andromeda.Mod
 
             initialized = true;
             InitializeServer();
-        }
-
-        private static void SyncLobby()
-        {
-            try {
-                var lobbies = UnityEngine.Object.FindObjectsOfType<LobbyServer>();
-                foreach (var lobby in lobbies)
-                {
-                    var method = typeof(LobbyServer).GetMethod("SendUpdate", BindingFlags.NonPublic | BindingFlags.Instance);
-                    if (method != null) method.Invoke(lobby, null);
-                }
-            } catch {}
         }
 
         private static void InitializeServer()
@@ -163,6 +150,11 @@ namespace Andromeda.Mod
             string modeDataPlain = GetArg(args, "--mode-data");
             if (!string.IsNullOrWhiteSpace(modeDataPlain))
                 gamemodeData = modeDataPlain;
+
+            string maxPlayersArg = GetArg(args, "--max-players")
+                ?? System.Environment.GetEnvironmentVariable("ANDROMEDA_MAX_PLAYERS");
+            if (!string.IsNullOrEmpty(maxPlayersArg) && int.TryParse(maxPlayersArg, out int mp) && mp >= 2)
+                MaxPlayers = mp;
 
             Region = region;
             GameName = gameName;
