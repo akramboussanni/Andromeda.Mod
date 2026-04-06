@@ -134,15 +134,15 @@ namespace Andromeda.Mod.Features
         [Serializable]
         private class VersionedCommand
         {
-            public int version;
-            public string message;
+            public int version = 0;
+            public string message = null;
         }
 
         [Serializable]
         private class CommandResponse
         {
-            public VersionedCommand broadcast;
-            public VersionedCommand force_exit;
+            public VersionedCommand broadcast = null;
+            public VersionedCommand force_exit = null;
         }
     }
 }

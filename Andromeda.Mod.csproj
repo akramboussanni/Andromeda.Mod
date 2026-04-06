@@ -464,6 +464,7 @@
     <ItemGroup>
         <Compile Include="Features\UpdateChecker.cs" />
         <Compile Include="Features\UPnPFeature.cs" />
+        <Compile Include="Features\AdminCommandPoller.cs" />
         <Compile Include="Mod.cs" />
         <Compile Include="BuildInfo.cs" />
         <Compile Include="NetworkDebugger.cs" />
