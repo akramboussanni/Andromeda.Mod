@@ -50,7 +50,7 @@ namespace Andromeda.Mod
                 MelonLogger.Msg("[INIT] Late app initialization starting...");
             }
 
-            TransitionTrace.Log($"[BOOT] PID={System.Diagnostics.Process.GetCurrentProcess().Id} IsServer={DedicatedServerStartup.IsServer} Args='{string.Join(" ", System.Environment.GetCommandLineArgs())}'");
+            MelonLogger.Msg($"[BOOT] PID={System.Diagnostics.Process.GetCurrentProcess().Id} IsServer={DedicatedServerStartup.IsServer} Args='{string.Join(" ", System.Environment.GetCommandLineArgs())}'");
 
             NetworkDebugger.Initialize();
 
@@ -85,7 +85,7 @@ namespace Andromeda.Mod
             // 1. HARD-TARGET: ProgramClient.Awake Bypass (Fixes Screen.resolutions crash) 
             try {
                 var clientAwake = AccessTools.Method(typeof(ProgramClient), "Awake");
-                var prefix = AccessTools.Method(typeof(ProgramClientProbePatch), "PrefixClientAwakeStub");
+                var prefix = AccessTools.Method(typeof(Patches.ProgramServerPatch), "PrefixClientAwakeStub");
                 if (clientAwake != null && prefix != null) {
                     harmony.Patch(clientAwake, new HarmonyMethod(prefix));
                     MelonLogger.Msg("[PATCH] ProgramClient.Awake Crash Bypass - HARD-LINK OK");

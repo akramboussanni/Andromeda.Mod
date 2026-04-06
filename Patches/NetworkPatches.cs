@@ -72,6 +72,16 @@ namespace Andromeda.Mod.Patches
             if (!DedicatedServerStartup.IsServer) return;
             NetworkDebugger.LogLobbyEvent($"[SERVER] Player Left: {playerId}");
         }
+
+        public static bool PrefixClientAwakeStub()
+        {
+            if (DedicatedServerStartup.IsServer)
+            {
+                MelonLogger.Msg("[SERVER-BOOT] Skipping ProgramClient.Awake via Hard-Link (resolution crash fixed).");
+                return false;
+            }
+            return true;
+        }
     }
 
     // Guard: prevent AndromedaClient from processing any messages on the dedicated server.
