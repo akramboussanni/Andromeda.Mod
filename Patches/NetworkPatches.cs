@@ -123,9 +123,17 @@ namespace Andromeda.Mod.Patches
     {
         [HarmonyPatch(typeof(ApiShared), "GamesCustomNew")]
         [HarmonyPrefix]
-        public static void PrefixGamesCustomNew(string region, GamemodeList.Key gamemodeKey)
+        public static void PrefixGamesCustomNew(ref int maxPlayers)
         {
-            MelonLogger.Msg($"[REST] Registering server: {gamemodeKey} in {region}");
+            maxPlayers = DedicatedServerStartup.MaxPlayers;
+            MelonLogger.Msg($"[REST] Registering server with MaxPlayers={maxPlayers}");
+        }
+
+        [HarmonyPatch(typeof(ApiShared), "GamesNew")]
+        [HarmonyPrefix]
+        public static void PrefixGamesNew(ref int maxPlayers)
+        {
+            maxPlayers = DedicatedServerStartup.MaxPlayers;
         }
     }
 

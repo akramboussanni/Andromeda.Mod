@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
 using Windwalk.Net;
+using UnityEngine;
 
 namespace Andromeda.Mod.Patches
 {
@@ -70,7 +71,7 @@ namespace Andromeda.Mod.Patches
         [HarmonyPrefix]
         public static void Prefix(ref int? __0)
         {
-            if (!DedicatedServerStartup.IsServer && !Environment.IsHost) return;
+            if (!DedicatedServerStartup.IsServer && !Andromeda.Mod.Patches.EnvironmentPatch.IsHost()) return;
             
             int configured = DedicatedServerStartup.MaxPlayers;
             if (configured != 8)
@@ -81,20 +82,75 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+
     /// <summary>
-    /// The game has a hardcoded '8' in GameSession.MaxPlayers getter or similar.
-    /// We patch it to return our configured MaxPlayers.
+    /// ProgramServer — Handles the initial connection handshake. 
+    /// We override the full check and the response value to respect custom MaxPlayers.
     /// </summary>
-    [HarmonyPatch(typeof(GameSession), "get_MaxPlayers")]
-    public static class GameSessionMaxPlayersPatch
+    [HarmonyPatch(typeof(ProgramServer), "OnJoin")]
+    public static class ProgramServerJoinPatch
     {
         [HarmonyPrefix]
-        public static bool Prefix(ref int __result)
+        public static void Prefix(ProgramServer __instance)
         {
-            if (!DedicatedServerStartup.IsServer && !Environment.IsHost) return true;
+            if (!DedicatedServerStartup.IsServer) return;
             
-            __result = DedicatedServerStartup.MaxPlayers;
-            return false;
+            // Override the gamemode's max players right before the check
+            var gamemode = Traverse.Create(__instance).Field("gamemode").GetValue();
+            if (gamemode != null)
+            {
+                Traverse.Create(gamemode).Field("maxPlayers").SetValue(DedicatedServerStartup.MaxPlayers);
+            }
+        }
+    }
+
+    /// <summary>
+    /// AndromedaServer — Overrides the hardcoded 8-player limit in the game's boot sequence.
+    /// </summary>
+    [HarmonyPatch(typeof(AndromedaServer), "Setup")]
+    public static class AndromedaServerSetupPatch
+    {
+        [HarmonyTranspiler]
+        public static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+        {
+            var codes = new List<CodeInstruction>(instructions);
+            for (int i = 0; i < codes.Count; i++)
+            {
+                // Find 'ldc.i4.8' (Max 8 players check in AndromedaServer.Setup)
+                if (codes[i].opcode == OpCodes.Ldc_I4_8)
+                {
+                    codes[i].opcode = OpCodes.Call;
+                    codes[i].operand = AccessTools.PropertyGetter(typeof(DedicatedServerStartup), nameof(DedicatedServerStartup.MaxPlayers));
+                    MelonLogger.Msg("[PATCH] AndromedaServer.Setup player limit check (8 -> dynamic) - Patched");
+                }
+            }
+            return codes;
+        }
+    }
+
+    [HarmonyPatch(typeof(LobbyClient), "OnPlayerList")]
+    public static class LobbyClientMaxPlayersPatch
+    {
+        [HarmonyPrefix]
+        public static void Prefix(Entity.Message entityMsg)
+        {
+            if (!Andromeda.Mod.Patches.EnvironmentPatch.IsHost()) return;
+
+            var playerListMsg = entityMsg.ReadBody<LobbyShared.PlayerListMsg>();
+            if (playerListMsg != null)
+            {
+                playerListMsg.maxPlayers = DedicatedServerStartup.MaxPlayers;
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(ProgramClient), "Connect")]
+    public static class ProgramClientMaxPlayersPatch
+    {
+        [HarmonyPrefix]
+        public static void Prefix(ref object data)
+        {
+             // data is ApiShared.JoinData, nested, we can use reflection if needed but usually OnJoin response is what matters
         }
     }
 

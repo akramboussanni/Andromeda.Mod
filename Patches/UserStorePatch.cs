@@ -14,11 +14,12 @@ namespace Andromeda.Mod.Patches
     public static class UserStorePatch
     {
         [HarmonyPatch(typeof(UserStore), "AddAll")]
-        [HarmonyPrefix]
         public static void PrefixAddAll(IEnumerable<UserStore.AddInfo> info)
         {
+            if (info == null) return;
             foreach (var i in info)
             {
+                // AddInfo is a struct, it cannot be null.
                 MelonLogger.Msg($"[USERSTORE] Attempting to register player: {i.username} (Steam: {i.steamId})");
             }
         }
@@ -38,7 +39,7 @@ namespace Andromeda.Mod.Patches
                 }
                 catch (Exception ex)
                 {
-                    MelonLogger.Error($"[USERSTORE] CRITICAL: Player registration FAILED: {ex.Message}");
+                    MelonLogger.Error($"[USERSTORE] CRITICAL: Player registration FAILED: {ex}");
                 }
             });
         }

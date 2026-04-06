@@ -22,5 +22,12 @@ namespace Andromeda.Mod.Patches
             __result = DedicatedServerStartup.IsServer;
             return false;
         }
+
+        public static bool IsHost()
+        {
+            // Environment.IsHost does not exist. We use DedicatedServerStartup.IsServer
+            // as our indicator for being the primary authority.
+            return DedicatedServerStartup.IsServer;
+        }
     }
 }
