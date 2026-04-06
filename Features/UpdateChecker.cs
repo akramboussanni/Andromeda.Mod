@@ -68,12 +68,15 @@ namespace Andromeda.Mod.Features
             GUI.Label(new Rect(boxX + pad, boxY + 94f, inner, 20f),
                 "You must update before playing on this server.", label);
 
+            label.fontSize = 14;
+            label.fontStyle = FontStyle.Bold;
             label.normal.textColor = new Color(0.55f, 0.85f, 1f);
-            GUI.Label(new Rect(boxX + pad, boxY + 118f, inner, 20f), _blockedUrl, label);
+            GUI.Label(new Rect(boxX + pad, boxY + 118f, inner, 20f), "Please run Andromeda.Installer.exe to update automatically.", label);
+            label.fontStyle = FontStyle.Normal; // Reset font style
 
             GUIStyle btn = new GUIStyle(GUI.skin.button);
             btn.fontSize = 13;
-            if (GUI.Button(new Rect(boxX + pad, boxY + boxH - 48f, inner, 30f), "Quit Game", btn))
+            if (GUI.Button(new Rect(boxX + pad, boxY + boxH - 48f, inner, 30f), "Quit to Desktop", btn))
                 Application.Quit();
         }
 
