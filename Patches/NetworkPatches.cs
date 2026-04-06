@@ -9,6 +9,7 @@ using UnityEngine;
 using UniRx.Async;
 using Windwalk.Net;
 using System.Linq;
+using System.Reflection.Emit;
 
 namespace Andromeda.Mod.Patches
 {
@@ -121,19 +122,73 @@ namespace Andromeda.Mod.Patches
     [HarmonyPatch]
     public static class ApiClientPartyJoinPatch
     {
-        [HarmonyPatch(typeof(ApiShared), "GamesCustomNew")]
-        [HarmonyPrefix]
-        public static void PrefixGamesCustomNew(ref int maxPlayers)
+        private static bool MatchLdc12(CodeInstruction instruction)
         {
-            maxPlayers = DedicatedServerStartup.MaxPlayers;
-            MelonLogger.Msg($"[REST] Registering server with MaxPlayers={maxPlayers}");
+            if (instruction.opcode == OpCodes.Ldc_I4_S && (instruction.operand is sbyte s && s == 12)) return true;
+            if (instruction.opcode == OpCodes.Ldc_I4 && (instruction.operand is int i && i == 12)) return true;
+            return false;
         }
 
-        [HarmonyPatch(typeof(ApiShared), "GamesNew")]
-        [HarmonyPrefix]
-        public static void PrefixGamesNew(ref int maxPlayers)
+        [HarmonyPatch]
+        public static class GamesCustomNewTranspiler
         {
-            maxPlayers = DedicatedServerStartup.MaxPlayers;
+            public static MethodBase TargetMethod()
+            {
+                Type type = typeof(ApiShared).GetNestedTypes(BindingFlags.NonPublic | BindingFlags.Instance)
+                    .FirstOrDefault(t => t.Name.Contains("GamesCustomNew") && t.Name.Contains("d__"));
+                return type?.GetMethod("MoveNext", BindingFlags.NonPublic | BindingFlags.Instance);
+            }
+
+            [HarmonyTranspiler]
+            public static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+            {
+                var codes = new List<CodeInstruction>(instructions);
+                int patchedCount = 0;
+                for (int i = 0; i < codes.Count; i++)
+                {
+                    if (MatchLdc12(codes[i]))
+                    {
+                        codes[i].opcode = OpCodes.Call;
+                        codes[i].operand = AccessTools.PropertyGetter(typeof(DedicatedServerStartup), nameof(DedicatedServerStartup.MaxPlayers));
+                        patchedCount++;
+                    }
+                }
+                // Only log if we actually found something, but don't warn if it fails here 
+                // because PatchAll might pick this up and we want to avoid double-processing logs
+                if (patchedCount > 0) 
+                    MelonLogger.Msg($"[PATCH] ApiShared.GamesCustomNew maxPlayers (12 -> dynamic) - Patched {patchedCount} occurrence(s).");
+                return codes;
+            }
+        }
+
+        [HarmonyPatch]
+        public static class GamesNewTranspiler
+        {
+            public static MethodBase TargetMethod()
+            {
+                Type type = typeof(ApiShared).GetNestedTypes(BindingFlags.NonPublic | BindingFlags.Instance)
+                    .FirstOrDefault(t => t.Name.Contains("GamesNew") && t.Name.Contains("d__"));
+                return type?.GetMethod("MoveNext", BindingFlags.NonPublic | BindingFlags.Instance);
+            }
+
+            [HarmonyTranspiler]
+            public static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+            {
+                var codes = new List<CodeInstruction>(instructions);
+                int patchedCount = 0;
+                for (int i = 0; i < codes.Count; i++)
+                {
+                    if (MatchLdc12(codes[i]))
+                    {
+                        codes[i].opcode = OpCodes.Call;
+                        codes[i].operand = AccessTools.PropertyGetter(typeof(DedicatedServerStartup), nameof(DedicatedServerStartup.MaxPlayers));
+                        patchedCount++;
+                    }
+                }
+                if (patchedCount > 0) 
+                    MelonLogger.Msg($"[PATCH] ApiShared.GamesNew maxPlayers (12 -> dynamic) - Patched {patchedCount} occurrence(s).");
+                return codes;
+            }
         }
     }
 
@@ -170,10 +225,6 @@ namespace Andromeda.Mod.Patches
         }
 
         // The ReadyRoom PhaseTime (symbiont selection countdown) fires before any real
-        // game phase but still calls SetEndTime with phaseIndex=-1, which auto-increments
-        // currentPhase from null to 0 and pushes every subsequent indicator 1 slot ahead.
-        // Suppress the increment for that phase only — the timer still runs, it just
-        // doesn't advance the phase dots.
         [HarmonyPatch(typeof(PhaseClock), "SetEndTime")]
         [HarmonyPrefix]
         public static void SkipReadyRoomPhaseAdvance(ref bool trackPhase)
@@ -185,7 +236,37 @@ namespace Andromeda.Mod.Patches
         }
     }
 
-    [HarmonyPatch]
+    [HarmonyPatch(typeof(LobbyListItem), "Set")]
+    public static class LobbyListItemSetPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(LobbyListItem __instance, ApiClient.PartyListResponseData party)
+        {
+            // If we are looking at an Andromeda server with a custom lobby size, force the UI to show it correctly
+            if (party != null && (DedicatedServerStartup.IsServer || Andromeda.Mod.Patches.EnvironmentPatch.IsHost()))
+            {
+                var playersTextField = typeof(LobbyListItem).GetField("playersText", BindingFlags.NonPublic | BindingFlags.Instance);
+                var text = playersTextField?.GetValue(__instance) as TMPro.TMP_Text;
+                if (text != null)
+                {
+                    text.text = $"{party.currentPlayers}/{DedicatedServerStartup.MaxPlayers}";
+                }
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(ProgramClient), "Connect")]
+    public static class ProgramClientConnectPatch
+    {
+        [HarmonyPrefix]
+        public static void Prefix(ref ApiShared.JoinData data)
+        {
+            // If the client joins and we're in special server mode, ensure the join response object itself is patched
+            // though usually this is handled via response.maxPlayers in the Task return.
+        }
+    }
+
+    [HarmonyPatch(typeof(AndromedaServerTransitionPatch))]
     public static class AndromedaServerTransitionPatch
     {
         private static readonly HashSet<int> ObjectivesEntered = new HashSet<int>();

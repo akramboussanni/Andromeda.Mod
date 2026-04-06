@@ -127,10 +127,6 @@ namespace Andromeda.Mod
                 MelonLogger.Error($"[INIT-ERROR] Patching failed: {ex.Message}");
             }
  
-            // Manual transpiler patches (async state machines need specific handling)
-            AndromedaServerMinPlayerPatch.Apply(harmony);
-            AndromedaServerMaxPlayerPatch.Apply(harmony);
- 
             MelonLogger.Msg("--------------------------------------------------");
             MelonLogger.Msg("[BOOT] PATCH REGISTRATION COMPLETE.");
             MelonLogger.Msg("--------------------------------------------------");
