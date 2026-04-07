@@ -154,6 +154,7 @@ namespace Andromeda.Mod
         {
             NetworkDebugger.Update();
             DedicatedServerStartup.Update();
+            Features.AdminCommandPoller.OnUpdate();
         }
 
         public override void OnGUI()
@@ -165,6 +166,8 @@ namespace Andromeda.Mod
 
         public override void OnApplicationQuit()
         {
+            Features.AdminCommandPoller.Stop();
+
             if (DedicatedServerStartup.IsServer && !string.IsNullOrEmpty(DedicatedServerStartup.SessionId))
             {
                 // Note: This might not finish if the process is killed abruptly,

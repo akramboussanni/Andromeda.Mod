@@ -9,7 +9,9 @@ namespace Andromeda.Mod
 {
     public static class RestApi
     {
-        public static string API_URL = "https://andromeda.kimotherapy.dev";
+        // Local testing: http://127.0.0.1:8000
+        // Production: https://andromeda.kimotherapy.dev
+        public static string API_URL = "http://127.0.0.1:8000";
 
 
         public static IEnumerator RegisterServerCoro(string sessionId, int port, string region)

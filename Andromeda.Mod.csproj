@@ -479,7 +479,6 @@
         <Compile Include="Patches\MiscPatches.cs" />
         <Compile Include="Patches\NetworkPatches.cs" />
         <Compile Include="Patches\GameSessionPatches.cs" />
-        <Compile Include="Patches\UiResolutionPatch.cs" />
         <Compile Include="Properties\AssemblyInfo.cs" />
     </ItemGroup>
     <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>

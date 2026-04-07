@@ -134,7 +134,7 @@ namespace Andromeda.Mod
 
         public static void LoadSettingsEarly()
         {
-            // Force override on first launch of this patch version (incremented to version 3)
+            // Force override on first launch of this patch version (incremented to version 10)
             if (PlayerPrefs.GetInt("Andromeda_Version", 0) < 10)
             {
                 PlayerPrefs.SetString("Andromeda_ApiUrl", "https://andromeda.kimotherapy.dev");
@@ -152,10 +152,20 @@ namespace Andromeda.Mod
             _apiUrlInput = FixUrl(_apiUrlInput);
             RestApi.API_URL = _apiUrlInput;
 
-            // Default log host to the API server's hostname so it follows the API URL automatically.
-            // Players who set a custom log server IP in-game override this via PlayerPrefs.
+            // Default log host to the community server
             _logIpInput   = PlayerPrefs.GetString("Andromeda_LogIp",  "log.andromeda.kimotherapy.dev");
             _logPortInput = PlayerPrefs.GetString("Andromeda_LogPort", "9090");
+
+            if (string.IsNullOrEmpty(_logIpInput))
+            {
+                // Fallback to the API host if no log server is set at all.
+                try 
+                {
+                    Uri uri = new Uri(_apiUrlInput);
+                    _logIpInput = uri.Host;
+                }
+                catch { _logIpInput = "log.andromeda.kimotherapy.dev"; }
+            }
         }
 
         private static string FixUrl(string url)

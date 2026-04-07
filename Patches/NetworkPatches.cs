@@ -39,28 +39,6 @@ namespace Andromeda.Mod.Patches
         }
     }
 
-    [HarmonyPatch(typeof(Entity.Base), "SendReliableToRoom")]
-    public static class EntityBaseSendReliableToRoomPatch
-    {
-        private static NetServer _cachedServer;
-        private static readonly Entity.Message _cachedMsg = new Entity.Message();
-
-        public static bool Prefix(Entity.Base __instance, BaseMessage body)
-        {
-            if (!DedicatedServerStartup.IsServer) return true;
-
-            try {
-                if (_cachedServer == null) _cachedServer = Singleton.Get<NetServer>();
-                if (_cachedServer == null) return true;
-
-                _cachedMsg.id = __instance.id;
-                _cachedMsg.componentType = __instance.ComponentType;
-                _cachedMsg.Body = body;
-                _cachedServer.SendAllReliable(_cachedMsg);
-                return false;
-            } catch { return true; }
-        }
-    }
 
     [HarmonyPatch(typeof(Entity.Base), "SendUnreliable")]
     public static class EntityBaseSendUnreliablePatch
@@ -85,29 +63,6 @@ namespace Andromeda.Mod.Patches
         }
     }
 
-    [HarmonyPatch(typeof(Entity.Base), "SendUnreliableToRoom")]
-    public static class EntityBaseSendUnreliableToRoomPatch
-    {
-        private static NetServer _cachedServer;
-        private static readonly Entity.Message _cachedMsg = new Entity.Message();
-
-        public static bool Prefix(Entity.Base __instance, BaseMessage body)
-        {
-            if (!DedicatedServerStartup.IsServer) return true;
-
-            try {
-                if (_cachedServer == null) _cachedServer = Singleton.Get<NetServer>();
-                if (_cachedServer == null) return true;
-
-                _cachedMsg.id = __instance.id;
-                _cachedMsg.componentType = __instance.ComponentType;
-                _cachedMsg.Body = body;
-                // Treat room broadcast as global broadcast for dedicated server
-                _cachedServer.SendAllUnreliable(_cachedMsg);
-                return false;
-            } catch { return true; }
-        }
-    }
 
     [HarmonyPatch]
     public static class ProgramServerPatch
@@ -342,7 +297,7 @@ namespace Andromeda.Mod.Patches
     public static class VoiceUIHUDSafetyPatch
     {
         private static FieldInfo[] _cachedFields;
-        public static MethodBase TargetMethod() => AccessTools.Method(AccessTools.TypeByName("VoiceUIHUD"), "Initialize");
+        public static MethodBase TargetMethod() => AccessTools.Method(typeof(VoiceUIHUD), "Initialize");
 
         [HarmonyPrefix]
         public static void Prefix(object __instance)
@@ -372,7 +327,7 @@ namespace Andromeda.Mod.Patches
     [HarmonyPatch]
     public static class VoiceClientSafetyPatch
     {
-        public static MethodBase TargetMethod() => AccessTools.Method(AccessTools.TypeByName("VoiceClient"), "GetPlayerVolume");
+        public static MethodBase TargetMethod() => AccessTools.Method(typeof(VoiceClient), "GetPlayerVolume");
 
         [HarmonyFinalizer]
         public static Exception Finalizer(Exception __exception, ref float __result)
