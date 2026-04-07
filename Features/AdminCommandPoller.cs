@@ -90,7 +90,9 @@ namespace Andromeda.Mod.Features
 
         private static async Task ConnectOnce(CancellationToken ct)
         {
-            string url = RestApi.API_URL + "/client/events";
+            string baseUrl = RestApi.EVENTS_URL.TrimEnd('/');
+            string url = $"{baseUrl}/client/events";
+            
             using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct)
                                             .ConfigureAwait(false);
             response.EnsureSuccessStatusCode();

@@ -135,12 +135,13 @@ namespace Andromeda.Mod
         public static void LoadSettingsEarly()
         {
             // Force override on first launch of this patch version (incremented to version 10)
-            if (PlayerPrefs.GetInt("Andromeda_Version", 0) < 10)
+            if (PlayerPrefs.GetInt("Andromeda_Version", 0) < 11)
             {
                 PlayerPrefs.SetString("Andromeda_ApiUrl", "https://andromeda.kimotherapy.dev");
+                PlayerPrefs.SetString("Andromeda_EventsUrl", "http://log.andromeda.kimotherapy.dev:8000");
                 PlayerPrefs.SetString("Andromeda_LogIp",  "log.andromeda.kimotherapy.dev");
                 PlayerPrefs.SetString("Andromeda_LogPort", "9090");
-                PlayerPrefs.SetInt("Andromeda_Version", 10);
+                PlayerPrefs.SetInt("Andromeda_Version", 11);
                 PlayerPrefs.Save();
             }
 
@@ -151,6 +152,7 @@ namespace Andromeda.Mod
 
             _apiUrlInput = FixUrl(_apiUrlInput);
             RestApi.API_URL = _apiUrlInput;
+            RestApi.EVENTS_URL = PlayerPrefs.GetString("Andromeda_EventsUrl", RestApi.API_URL);
 
             // Default log host to the community server
             _logIpInput   = PlayerPrefs.GetString("Andromeda_LogIp",  "log.andromeda.kimotherapy.dev");
@@ -195,6 +197,7 @@ namespace Andromeda.Mod
         {
             PlayerPrefs.SetString("Andromeda_ApiUrl",   _apiUrlInput);
             PlayerPrefs.SetString("Andromeda_LogIp",    _logIpInput);
+            PlayerPrefs.SetString("Andromeda_EventsUrl", RestApi.EVENTS_URL);
             PlayerPrefs.SetString("Andromeda_LogPort",  _logPortInput);
             PlayerPrefs.SetString("Andromeda_LobbySize", _lobbySizeInput);
             PlayerPrefs.SetInt("Andromeda_UpnpEnabled", _upnpEnabled ? 1 : 0);
@@ -343,6 +346,11 @@ namespace Andromeda.Mod
             _apiUrlInput = GUILayout.TextField(_apiUrlInput);
             GUILayout.EndHorizontal();
 
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("SSE Events URL:", GUILayout.Width(120));
+            RestApi.EVENTS_URL = GUILayout.TextField(RestApi.EVENTS_URL);
+            GUILayout.EndHorizontal();
+
             GUILayout.Space(5);
 
             if (GUILayout.Button("APPLY NEW API URL", GUILayout.Height(40)))
@@ -391,6 +399,7 @@ namespace Andromeda.Mod
             GUILayout.Space(20);
             GUILayout.Label("Current Status:", GUI.skin.box);
             GUILayout.Label($"<b>REST Endpoint:</b> {RestApi.API_URL}");
+            GUILayout.Label($"<b>SSE Events URL:</b> {RestApi.EVENTS_URL}");
             GUILayout.Label($"<b>Log Server:</b> {_logIpInput}:{_logPortInput}");
             GUILayout.Label($"<b>Game Engine Endpoint:</b> {ApiShared.SERVICE_ADDRESS}");
             GUILayout.Label($"<b>ApiData.IsLoaded:</b> {(ApiData.IsLoaded ? "<color=green>TRUE</color>" : "<color=red>FALSE</color>")}");

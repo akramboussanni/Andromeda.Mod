@@ -12,6 +12,7 @@ namespace Andromeda.Mod
         // Local testing: http://127.0.0.1:8000
         // Production: https://andromeda.kimotherapy.dev
         public static string API_URL = "http://127.0.0.1:8000";
+        public static string EVENTS_URL = API_URL;
 
 
         public static IEnumerator RegisterServerCoro(string sessionId, int port, string region)
