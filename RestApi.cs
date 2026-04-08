@@ -9,10 +9,7 @@ namespace Andromeda.Mod
 {
     public static class RestApi
     {
-        // Local testing: http://127.0.0.1:8000
-        // Production: https://andromeda.kimotherapy.dev
-        public static string API_URL = "http://127.0.0.1:8000";
-        public static string EVENTS_URL = API_URL;
+        public static string API_URL = "https://andromeda.kimotherapy.dev";
 
 
         public static IEnumerator RegisterServerCoro(string sessionId, int port, string region)
@@ -27,14 +24,15 @@ namespace Andromeda.Mod
             yield return PostRest("/server/ready", readyData);
         }
 
-        public static IEnumerator RegisterHeartbeat(string sessionId)
+        public static IEnumerator RegisterHeartbeat(string sessionId, object players = null)
         {
-            yield return PostRest("/server/heartbeat", new { sessionId = sessionId });
+            var body = new { sessionId = sessionId, players = players };
+            yield return PostRest("/server/heartbeat", body);
         }
 
-        public static void SendHeartbeat(string sessionId)
+        public static void SendHeartbeat(string sessionId, object players = null)
         {
-            MelonCoroutines.Start(RegisterHeartbeat(sessionId));
+            MelonCoroutines.Start(RegisterHeartbeat(sessionId, players));
         }
 
         public static IEnumerator SendShutdownCoro(string sessionId, string reason = null)

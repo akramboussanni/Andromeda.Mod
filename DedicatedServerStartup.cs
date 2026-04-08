@@ -17,6 +17,7 @@ namespace Andromeda.Mod
         public static GamemodeList.Key GamemodeKey { get; private set; }
         public static bool IsPublicSession { get; private set; }
         public static string GamemodeData { get; private set; }
+        public static string ForcedApiUrl { get; private set; }
         public static int MaxPlayers { get; set; } = 8;
         private static bool initialized = false;
         private static DateTime startupTime;
@@ -26,31 +27,44 @@ namespace Andromeda.Mod
 
         public static void Check(string[] args)
         {
-            // Robust detection: check flags, batch mode, and common game server env vars
-            bool hasServerFlag = false;
-            foreach (var arg in args)
-            {
-                if (arg == "--server" || arg == "-server" || arg == "-batchmode")
-                {
-                    hasServerFlag = true;
-                    break;
-                }
-            }
+            bool hasDedicatedFlag = args.Any(arg =>
+                string.Equals(arg, "--server", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(arg, "-server", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(arg, "--dedicated-server", StringComparison.OrdinalIgnoreCase));
 
-            // Gamelift and common headless environment detection
-            bool isHeadless = !string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("GAMELIFT_SDK_VERSION"))
-                           || !string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("GAMELIFT_REGION"))
-                           || !string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("AWS_REGION"))
-                           || args.Any(a => a.Contains("Gamelift") || a.Contains("batchmode"));
+            bool hasBatchModeArg = args.Any(arg =>
+                string.Equals(arg, "-batchmode", StringComparison.OrdinalIgnoreCase)
+                || arg.IndexOf("batchmode", StringComparison.OrdinalIgnoreCase) >= 0);
 
-            // If we find Gamelift vars, we are ABSOLUTELY the server.
-            IsServer = hasServerFlag || isHeadless;
+            bool hasGameliftMarkers = !string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("GAMELIFT_SDK_VERSION"))
+                                  || !string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("GAMELIFT_REGION"))
+                                  || !string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("GAMELIFT_FLEET_ID"))
+                                  || args.Any(a => a.IndexOf("gamelift", StringComparison.OrdinalIgnoreCase) >= 0);
+
+            bool hasAndromedaServerMarkers = !string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("ANDROMEDA_SESSION_ID"))
+                                         || !string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("ANDROMEDA_HOST_RUNTIME_MODE"));
+
+            // Avoid false positives on desktop clients (for example users with AWS_* env vars set globally).
+            // Dedicated mode requires an explicit dedicated flag OR batch/headless mode plus server markers.
+            IsServer = hasDedicatedFlag || (hasBatchModeArg && (hasGameliftMarkers || hasAndromedaServerMarkers));
+
+            MelonLogger.Msg($"[STARTUP] Detection: IsServer={IsServer}, DedicatedFlag={hasDedicatedFlag}, BatchModeArg={hasBatchModeArg}, GameliftMarkers={hasGameliftMarkers}, AndromedaServerMarkers={hasAndromedaServerMarkers}");
 
             if (IsServer)
             {
                 startupTime = DateTime.Now;
                 lastHeartbeat = DateTime.Now;
                 forcedAndromedaObjectives = false;
+
+                string apiUrlFromArgs = GetArg(args, "--api-url");
+                string apiUrlFromEnv = System.Environment.GetEnvironmentVariable("ANDROMEDA_API_URL");
+                ForcedApiUrl = SanitizeApiUrl(string.IsNullOrWhiteSpace(apiUrlFromArgs) ? apiUrlFromEnv : apiUrlFromArgs);
+                if (!string.IsNullOrWhiteSpace(ForcedApiUrl))
+                {
+                    RestApi.API_URL = ForcedApiUrl;
+                    MelonLogger.Msg($"[STARTUP] API URL forced for this dedicated session: {RestApi.API_URL}");
+                }
+
                 MelonLogger.Msg($"[STARTUP] Dedicated Server detected. Environment Markers FOUND.");
                 MelonLogger.Msg("!!! DEDICATED SERVER MODE DETECTED !!!");
 
@@ -93,7 +107,24 @@ namespace Andromeda.Mod
 
                 if (!string.IsNullOrEmpty(SessionId))
                 {
-                    RestApi.SendHeartbeat(SessionId);
+                    // Scrape real-time player ranks/info from UserStore
+                    object[] players = null;
+                    try
+                    {
+                        var store = UserStore.Instance;
+                        if (store != null && store.All != null)
+                        {
+                            players = store.All.Select(p => new {
+                                username = p.Value.username,
+                                steamId = p.Value.steamId,
+                                rank = p.Value.rank,
+                                isDead = p.Value.isDead
+                            }).ToArray();
+                        }
+                    }
+                    catch { }
+
+                    RestApi.SendHeartbeat(SessionId, players);
                 }
             }
 
@@ -388,6 +419,17 @@ namespace Andromeda.Mod
                 if (args[i] == name) return args[i+1];
             }
             return null;
+        }
+
+        private static string SanitizeApiUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return null;
+
+            string sanitized = url.Trim().TrimEnd('/');
+            if (!sanitized.StartsWith("http://") && !sanitized.StartsWith("https://"))
+                sanitized = "http://" + sanitized;
+
+            return sanitized;
         }
     }
 }

@@ -1,202 +1,93 @@
 using System;
-using System.Collections.Concurrent;
-using System.IO;
-using System.Net.Http;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Collections;
 using MelonLoader;
 using Newtonsoft.Json;
 using UnityEngine;
+using UnityEngine.Networking;
 
 namespace Andromeda.Mod.Features
 {
     /// <summary>
-    /// Connects to /client/events (Server-Sent Events) and reacts to admin-issued
-    /// broadcast messages and force-exit commands in real time.
-    /// No polling, no TTL, no version tracking needed — events are fire-and-forget.
-    /// New connections only receive commands issued after they connect.
+    /// Polls /client/commands every 5 seconds and reacts to admin-issued
+    /// broadcast messages and force-exit commands.
     /// </summary>
     public static class AdminCommandPoller
     {
-        // Overlay state — written from background thread, read from main thread
-        private static volatile string _broadcastMessage = null;
+        private static int _lastBroadcastVersion = -1;
+        private static int _lastForceExitVersion = -1;
+
+        // Overlay state
+        private static string _broadcastMessage = null;
         private static float _broadcastShowUntil = 0f;
-        private const float BROADCAST_DISPLAY_SECONDS = 8f;
 
-        // Actions that must run on Unity's main thread (e.g. Application.Quit, Time.realtimeSinceStartup)
-        private static readonly ConcurrentQueue<Action> _mainThread = new ConcurrentQueue<Action>();
-
-        private static CancellationTokenSource _cts;
-        // Force-Exit state
-        private static bool _isForcedExitPending = false;
-        private static float _forceExitTime = 0f;
-        private const float FORCE_EXIT_COUNTDOWN = 6.0f; // 5 seconds display + safety buffer
-
-        private static readonly HttpClient _http = new HttpClient
-        {
-            Timeout = System.Threading.Timeout.InfiniteTimeSpan,
-        };
+        private const float POLL_INTERVAL = 5f;
+        private const float BROADCAST_DISPLAY_SECONDS = 10f;
 
         public static void Start()
         {
-            _cts = new CancellationTokenSource();
-            _isForcedExitPending = false;
-            Task.Run(() => ConnectLoop(_cts.Token));
-            MelonLogger.Msg("[AdminPoller] Started — connected to /client/events (SSE)");
+            MelonCoroutines.Start(PollLoop());
+            MelonLogger.Msg("[AdminPoller] Started — polling /client/commands every 5s");
         }
 
-        public static void Stop()
+        private static IEnumerator PollLoop()
         {
-            _cts?.Cancel();
-        }
+            // Warm-up: wait a few seconds after startup before first poll
+            yield return new WaitForSeconds(10f);
 
-        /// <summary>Call from Mod.OnUpdate() to drain main-thread actions.</summary>
-        public static void OnUpdate()
-        {
-            while (_mainThread.TryDequeue(out var action))
+            while (true)
             {
-                try { action(); }
-                catch (Exception ex) { MelonLogger.Warning($"[AdminPoller] Main-thread action failed: {ex.Message}"); }
-            }
-
-            if (_isForcedExitPending && Time.realtimeSinceStartup >= _forceExitTime)
-            {
-                MelonLogger.Msg("[AdminPoller] Countdown finished. Quitting...");
-                Application.Quit();
+                yield return PollOnce();
+                yield return new WaitForSeconds(POLL_INTERVAL);
             }
         }
 
-        // ── Background thread: persistent SSE connection with auto-reconnect ──
-
-        private static async Task ConnectLoop(CancellationToken ct)
+        private static IEnumerator PollOnce()
         {
-            await Task.Delay(5000, ct).ConfigureAwait(false); // short warm-up after startup
-
-            while (!ct.IsCancellationRequested)
+            string url = RestApi.API_URL + "/client/commands";
+            using (var req = UnityWebRequest.Get(url))
             {
-                try
+                req.timeout = 5;
+                yield return req.SendWebRequest();
+
+                if (req.isNetworkError || req.isHttpError)
+                    yield break;
+
+                CommandResponse resp = null;
+                try { resp = JsonConvert.DeserializeObject<CommandResponse>(req.downloadHandler.text); }
+                catch { yield break; }
+
+                if (resp == null) yield break;
+
+                // ── Force Exit ──
+                if (resp.force_exit != null && resp.force_exit.version > _lastForceExitVersion)
                 {
-                    await ConnectOnce(ct).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) { break; }
-                catch (Exception ex)
-                {
-                    MelonLogger.Warning($"[AdminPoller] SSE disconnected: {ex.Message} — reconnecting in 10s");
-                    try { await Task.Delay(10_000, ct).ConfigureAwait(false); }
-                    catch (OperationCanceledException) { break; }
-                }
-            }
-        }
-
-        private static async Task ConnectOnce(CancellationToken ct)
-        {
-            string baseUrl = RestApi.EVENTS_URL.TrimEnd('/');
-            string url = $"{baseUrl}/client/events";
-            
-            using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct)
-                                            .ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
-
-            using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-            using var reader = new StreamReader(stream);
-
-            string pendingEvent = null;
-
-            while (!ct.IsCancellationRequested)
-            {
-                string line = await reader.ReadLineAsync().ConfigureAwait(false);
-                if (line == null) break; // server closed stream
-
-                if (line.StartsWith("event:"))
-                {
-                    pendingEvent = line.Substring(6).Trim();
-                }
-                else if (line.StartsWith("data:"))
-                {
-                    string data = line.Substring(5).Trim();
-                    if (pendingEvent != null)
+                    _lastForceExitVersion = resp.force_exit.version;
+                    if (_lastForceExitVersion > 0) // ignore version 0 (startup default)
                     {
-                        HandleEvent(pendingEvent, data);
+                        MelonLogger.Warning("[AdminPoller] FORCE EXIT received from server admin — quitting.");
+                        Application.Quit();
                     }
                 }
-                else if (string.IsNullOrWhiteSpace(line))
+
+                // ── Broadcast ──
+                if (resp.broadcast != null && resp.broadcast.version > _lastBroadcastVersion)
                 {
-                    // \n\n received - reset pending event
-                    pendingEvent = null;
+                    _lastBroadcastVersion = resp.broadcast.version;
+                    if (_lastBroadcastVersion > 0 && !string.IsNullOrEmpty(resp.broadcast.message))
+                    {
+                        MelonLogger.Msg($"[AdminPoller] BROADCAST: {resp.broadcast.message}");
+                        _broadcastMessage = resp.broadcast.message;
+                        _broadcastShowUntil = Time.realtimeSinceStartup + BROADCAST_DISPLAY_SECONDS;
+                    }
                 }
             }
         }
 
-        // ── Event handlers (called from background thread → dispatch to main thread as needed) ──
-
-        private static void HandleEvent(string type, string json)
-        {
-            try
-            {
-                switch (type)
-                {
-                    case "broadcast":
-                        var bc = JsonConvert.DeserializeObject<BroadcastPayload>(json);
-                        if (bc != null && !string.IsNullOrEmpty(bc.message))
-                        {
-                            MelonLogger.Msg($"[AdminPoller] BROADCAST: {bc.message}");
-                            string msg = bc.message;
-                            _mainThread.Enqueue(() =>
-                            {
-                                _broadcastMessage = msg;
-                                _broadcastShowUntil = Time.realtimeSinceStartup + BROADCAST_DISPLAY_SECONDS;
-                            });
-                        }
-                        break;
-
-                    case "force_exit":
-                        MelonLogger.Warning("[AdminPoller] FORCE EXIT received from server admin — starting countdown.");
-                        _mainThread.Enqueue(() =>
-                        {
-                            if (_isForcedExitPending) return;
-                            _isForcedExitPending = true;
-                            _forceExitTime = Time.realtimeSinceStartup + FORCE_EXIT_COUNTDOWN;
-                        });
-                        break;
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[AdminPoller] Failed to handle event '{type}': {ex.Message}");
-            }
-        }
-
-        // ── OnGUI — render overlays (call from Mod.OnGUI) ──
-
+        /// <summary>
+        /// Call from Mod.OnGUI() to render the broadcast overlay.
+        /// </summary>
         public static void OnGUI()
         {
-            int sw = Screen.width;
-            int sh = Screen.height;
-            var oldColor = GUI.color;
-
-            // 1. Force Exit Countdown (Top center)
-            if (_isForcedExitPending)
-            {
-                float remaining = _forceExitTime - Time.realtimeSinceStartup;
-                int seconds = Mathf.Max(0, Mathf.FloorToInt(remaining - 1));
-
-                // Red banner at the top
-                GUI.color = new Color(0.8f, 0f, 0f, 0.95f);
-                GUI.DrawTexture(new Rect(0, 0, sw, 60), Texture2D.whiteTexture);
-
-                GUI.color = Color.white;
-                var quitStyle = new GUIStyle(GUI.skin.label)
-                {
-                    fontSize = 24,
-                    fontStyle = FontStyle.Bold,
-                    alignment = TextAnchor.MiddleCenter,
-                    normal = { textColor = Color.white }
-                };
-                GUI.Label(new Rect(0, 0, sw, 60), $"⚠️ SERVER CLOSING IN {seconds}s...", quitStyle);
-                GUI.color = oldColor;
-            }
-
-            // 2. Broadcast Overlay (Bottom center)
             if (_broadcastMessage == null) return;
             if (Time.realtimeSinceStartup > _broadcastShowUntil)
             {
@@ -204,25 +95,29 @@ namespace Andromeda.Mod.Features
                 return;
             }
 
-            float bRemaining = _broadcastShowUntil - Time.realtimeSinceStartup;
-            float bAlpha = Mathf.Clamp01(bRemaining); // fade last second
+            float remaining = _broadcastShowUntil - Time.realtimeSinceStartup;
+            float alpha = Mathf.Clamp01(remaining); // fade last second
+
+            int sw = Screen.width;
+            int sh = Screen.height;
 
             // Background banner
-            GUI.color = new Color(0.05f, 0.05f, 0.15f, 0.92f * bAlpha);
+            var oldColor = GUI.color;
+            GUI.color = new Color(0.05f, 0.05f, 0.15f, 0.92f * alpha);
             GUI.DrawTexture(new Rect(0, sh - 120, sw, 110), Texture2D.whiteTexture);
 
             // Title
-            GUI.color = new Color(0.6f, 0.7f, 1f, bAlpha);
+            GUI.color = new Color(0.6f, 0.7f, 1f, alpha);
             var titleStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 14,
                 fontStyle = FontStyle.Bold,
                 alignment = TextAnchor.MiddleCenter,
             };
-            GUI.Label(new Rect(0, sh - 115, sw, 28), "SERVER ANNOUNCEMENT", titleStyle);
+            GUI.Label(new Rect(0, sh - 115, sw, 28), "📢  SERVER ANNOUNCEMENT", titleStyle);
 
             // Message
-            GUI.color = new Color(1f, 1f, 1f, bAlpha);
+            GUI.color = new Color(1f, 1f, 1f, alpha);
             var msgStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 18,
@@ -236,11 +131,18 @@ namespace Andromeda.Mod.Features
         }
 
         // ── JSON models ──
+        [Serializable]
+        private class VersionedCommand
+        {
+            public int version = 0;
+            public string message = null;
+        }
 
         [Serializable]
-        private class BroadcastPayload
+        private class CommandResponse
         {
-            public string message = null;
+            public VersionedCommand broadcast = null;
+            public VersionedCommand force_exit = null;
         }
     }
 }

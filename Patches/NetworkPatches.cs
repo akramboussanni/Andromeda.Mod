@@ -14,6 +14,111 @@ using System.Reflection.Emit;
 
 namespace Andromeda.Mod.Patches
 {
+    [HarmonyPatch(typeof(Scenes), "Load", new[] { typeof(string[]) })]
+    public static class ScenesLoadPathSafetyPatch
+    {
+        [HarmonyPrefix]
+        public static void Prefix(ref string[] paths)
+        {
+            if (paths == null) return;
+
+            int originalCount = paths.Length;
+            paths = paths.Where(p => !string.IsNullOrWhiteSpace(p)).ToArray();
+
+            if (paths.Length != originalCount)
+            {
+                MelonLogger.Warning($"[SCENES] Removed {originalCount - paths.Length} invalid scene path(s) before load.");
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(PurchaseFundsModal), "Start")]
+    public static class PurchaseFundsModalStartSafetyPatch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix(PurchaseFundsModal __instance)
+        {
+            SafeStart(__instance);
+            return false;
+        }
+
+        private static async void SafeStart(PurchaseFundsModal modal)
+        {
+            await UniTask.WaitUntil(() => ApiData.IsLoaded);
+
+            var tr = Traverse.Create(modal);
+            var offerRoot = tr.Field("offerRoot").GetValue<Transform>();
+            var offerPrefab = tr.Field("fundOfferPrefab").GetValue<FundOfferListItem>();
+            var offerDisplayData = tr.Field("offerDisplayData").GetValue<PurchaseFundsModal.FundOfferDisplayData[]>();
+
+            if (offerRoot == null || offerPrefab == null || offerDisplayData == null)
+            {
+                MelonLogger.Warning("[FUNDS] PurchaseFundsModal missing references; skipping offer render.");
+                return;
+            }
+
+            foreach (Transform child in offerRoot.Cast<Transform>().ToList())
+            {
+                UnityEngine.Object.Destroy(child.gameObject);
+            }
+
+            var offers = ApiData.FundOffers;
+            if (offers == null || offers.Count == 0)
+            {
+                MelonLogger.Warning("[FUNDS] No fund offers available from API; purchase modal will be empty.");
+                return;
+            }
+
+            var baselineOffer = offers.Values
+                .Where(o => o != null && o.cost > 0)
+                .OrderBy(o => o.amount / o.cost)
+                .FirstOrDefault();
+
+            if (baselineOffer == null)
+            {
+                MelonLogger.Warning("[FUNDS] No valid fund offers with positive cost; purchase modal will be empty.");
+                return;
+            }
+
+            float baselineRatio = baselineOffer.amount / baselineOffer.cost;
+            if (baselineRatio <= 0f) baselineRatio = 1f;
+
+            foreach (var display in offerDisplayData)
+            {
+                ApiClient.FundOfferData offer;
+                if (!offers.TryGetValue(display.guid, out offer) || offer == null) continue;
+                if (offer.cost <= 0) continue;
+
+                float ratio = offer.amount / offer.cost;
+                float discount = ratio / baselineRatio - 1f;
+
+                UnityEngine.Object.Instantiate(offerPrefab, offerRoot).Initialize(
+                    display.guid,
+                    offer.description,
+                    offer.cost,
+                    discount,
+                    display.icon,
+                    () => tr.Method("InitiatePurchase", offer).GetValue()
+                );
+            }
+        }
+    }
+
+    internal static class EntityRedirectFilter
+    {
+        public static bool ShouldRedirect(Entity.Base entity)
+        {
+            if (entity == null) return false;
+
+            var type = entity.GetType();
+            string typeName = type.Name ?? string.Empty;
+
+            // Dedicated runtime should only rewrite server-side entity components.
+            // Client/proxy/shared components should keep original behavior.
+            return typeName.EndsWith("Server", StringComparison.Ordinal);
+        }
+    }
+
     // Nuclear Fix: Redirect ALL entity messaging from NetClient to NetServer when running as a server.
     // Optimized with cached Singleton lookup to minimize per-frame overhead.
     [HarmonyPatch(typeof(Entity.Base), "SendReliable")]
@@ -29,6 +134,7 @@ namespace Andromeda.Mod.Patches
             try {
                 if (_cachedServer == null) _cachedServer = Singleton.Get<NetServer>();
                 if (_cachedServer == null) return true;
+                if (!EntityRedirectFilter.ShouldRedirect(__instance)) return true;
 
                 _cachedMsg.id = __instance.id;
                 _cachedMsg.componentType = __instance.ComponentType;
@@ -39,6 +145,29 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch(typeof(Entity.Base), "SendReliableToRoom")]
+    public static class EntityBaseSendReliableToRoomPatch
+    {
+        private static NetServer _cachedServer;
+        private static readonly Entity.Message _cachedMsg = new Entity.Message();
+
+        public static bool Prefix(Entity.Base __instance, BaseMessage body)
+        {
+            if (!DedicatedServerStartup.IsServer) return true;
+
+            try {
+                if (_cachedServer == null) _cachedServer = Singleton.Get<NetServer>();
+                if (_cachedServer == null) return true;
+                if (!EntityRedirectFilter.ShouldRedirect(__instance)) return true;
+
+                _cachedMsg.id = __instance.id;
+                _cachedMsg.componentType = __instance.ComponentType;
+                _cachedMsg.Body = body;
+                _cachedServer.SendAllReliable(_cachedMsg);
+                return false;
+            } catch { return true; }
+        }
+    }
 
     [HarmonyPatch(typeof(Entity.Base), "SendUnreliable")]
     public static class EntityBaseSendUnreliablePatch
@@ -53,6 +182,7 @@ namespace Andromeda.Mod.Patches
             try {
                 if (_cachedServer == null) _cachedServer = Singleton.Get<NetServer>();
                 if (_cachedServer == null) return true;
+                if (!EntityRedirectFilter.ShouldRedirect(__instance)) return true;
 
                 _cachedMsg.id = __instance.id;
                 _cachedMsg.componentType = __instance.ComponentType;
@@ -63,6 +193,30 @@ namespace Andromeda.Mod.Patches
         }
     }
 
+    [HarmonyPatch(typeof(Entity.Base), "SendUnreliableToRoom")]
+    public static class EntityBaseSendUnreliableToRoomPatch
+    {
+        private static NetServer _cachedServer;
+        private static readonly Entity.Message _cachedMsg = new Entity.Message();
+
+        public static bool Prefix(Entity.Base __instance, BaseMessage body)
+        {
+            if (!DedicatedServerStartup.IsServer) return true;
+
+            try {
+                if (_cachedServer == null) _cachedServer = Singleton.Get<NetServer>();
+                if (_cachedServer == null) return true;
+                if (!EntityRedirectFilter.ShouldRedirect(__instance)) return true;
+
+                _cachedMsg.id = __instance.id;
+                _cachedMsg.componentType = __instance.ComponentType;
+                _cachedMsg.Body = body;
+                // Treat room broadcast as global broadcast for dedicated server
+                _cachedServer.SendAllUnreliable(_cachedMsg);
+                return false;
+            } catch { return true; }
+        }
+    }
 
     [HarmonyPatch]
     public static class ProgramServerPatch
@@ -101,11 +255,17 @@ namespace Andromeda.Mod.Patches
 
         public static bool PrefixClientAwakeStub()
         {
-            if (DedicatedServerStartup.IsServer)
+            if (DedicatedServerStartup.IsServer && Application.isBatchMode)
             {
                 MelonLogger.Msg("[SERVER-BOOT] Skipping ProgramClient.Awake via Hard-Link (resolution crash fixed).");
                 return false;
             }
+
+            if (DedicatedServerStartup.IsServer && !Application.isBatchMode)
+            {
+                MelonLogger.Warning("[SERVER-BOOT] IsServer=true but Application.isBatchMode=false; allowing ProgramClient.Awake to avoid client-side null state.");
+            }
+
             return true;
         }
     }
@@ -118,7 +278,7 @@ namespace Andromeda.Mod.Patches
     public static class AndromedaClientServerGuardPatch
     {
         [HarmonyPrefix]
-        public static bool BlockOnServer() => !DedicatedServerStartup.IsServer;
+        public static bool BlockOnServer() => !(DedicatedServerStartup.IsServer && Application.isBatchMode);
     }
 
     [HarmonyPatch]
@@ -297,7 +457,7 @@ namespace Andromeda.Mod.Patches
     public static class VoiceUIHUDSafetyPatch
     {
         private static FieldInfo[] _cachedFields;
-        public static MethodBase TargetMethod() => AccessTools.Method(typeof(VoiceUIHUD), "Initialize");
+        public static MethodBase TargetMethod() => AccessTools.Method(AccessTools.TypeByName("VoiceUIHUD"), "Initialize");
 
         [HarmonyPrefix]
         public static void Prefix(object __instance)
@@ -327,7 +487,7 @@ namespace Andromeda.Mod.Patches
     [HarmonyPatch]
     public static class VoiceClientSafetyPatch
     {
-        public static MethodBase TargetMethod() => AccessTools.Method(typeof(VoiceClient), "GetPlayerVolume");
+        public static MethodBase TargetMethod() => AccessTools.Method(AccessTools.TypeByName("VoiceClient"), "GetPlayerVolume");
 
         [HarmonyFinalizer]
         public static Exception Finalizer(Exception __exception, ref float __result)

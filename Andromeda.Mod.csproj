@@ -465,9 +465,13 @@
         <Compile Include="Features\UpdateChecker.cs" />
         <Compile Include="Features\UPnPFeature.cs" />
         <Compile Include="Features\AdminCommandPoller.cs" />
+        <Compile Include="Features\SteamLinkRequestsMenu.cs" />
         <Compile Include="Mod.cs" />
         <Compile Include="BuildInfo.cs" />
-        <Compile Include="NetworkDebugger.cs" />
+        <Compile Include="NetworkDebugger\NetworkDebugger.Core.cs" />
+        <Compile Include="NetworkDebugger\NetworkDebugger.Gui.cs" />
+        <Compile Include="NetworkDebugger\NetworkDebugger.Data.cs" />
+        <Compile Include="NetworkDebugger\NetworkDebugger.RequestLogging.cs" />
         <Compile Include="RestApi.cs" />
         <Compile Include="DedicatedServerStartup.cs" />
         <Compile Include="Features\PerkFeatures.cs" />

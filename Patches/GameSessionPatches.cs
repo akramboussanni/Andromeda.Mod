@@ -24,37 +24,6 @@ namespace Andromeda.Mod.Patches
         }
     }
 
-    /// <summary>
-    /// Logs when CustomPartyShared.JoinGameMsg is sent so we can confirm the
-    /// lobby server is actually broadcasting the "switch to match" command.
-    /// JoinGameMsg is a protected nested class so we identify it by type name.
-    /// Note: NetworkPatches.cs already has a prefix on Entity.Base.SendReliable;
-    /// Harmony will chain both prefixes correctly.
-    /// </summary>
-    [HarmonyPatch(typeof(Entity.Base), "SendReliable")]
-    public static class JoinGameMsgLoggingPatch
-    {
-        private const string JoinGameMsgTypeName = "JoinGameMsg";
-
-        public static void Prefix(BaseMessage body)
-        {
-            if (!DedicatedServerStartup.IsServer) return;
-            if (body == null) return;
-            if (body.GetType().Name != JoinGameMsgTypeName) return;
-            try
-            {
-                Type t = body.GetType();
-                string region = (string)t.GetField("region")?.GetValue(body) ?? "?";
-                string gameId = (string)t.GetField("gameId")?.GetValue(body) ?? "?";
-                bool   pub    = (bool)(t.GetField("rejoinPublic")?.GetValue(body) ?? false);
-                NetworkDebugger.LogLobbyEvent(
-                    $"[CUSTOM-PARTY] >>> Broadcasting JoinGameMsg! region={region} gameId={gameId} isPublic={pub} — clients will switch to match server."
-                );
-            }
-            catch { /* best-effort */ }
-        }
-    }
-
     // ---------------------------------------------------------------------------
     // LobbyServer — override the hardcoded 8-player cap with --max-players value
     // ---------------------------------------------------------------------------
