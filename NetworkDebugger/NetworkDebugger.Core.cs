@@ -39,7 +39,7 @@ namespace Andromeda.Mod
 
         /// <summary>Hostname used by LogRedirectPatch (and LogLobbyEvent TCP sender).</summary>
         public static string LogHost => _logIpInput;
-        private static string _lobbySizeInput = "8";
+        private static string _lobbySizeInput = "12";
         private static bool _upnpEnabled = false; // Disabled by default
         private static string _publicIp = "Fetching...";
         private static bool _showPublicIp = false; // Hidden by default as requested
@@ -155,20 +155,31 @@ namespace Andromeda.Mod
 
         public static void LoadSettingsEarly()
         {
-            // Force override on first launch of this patch version (incremented to version 10)
-            if (PlayerPrefs.GetInt("Andromeda_Version", 0) < 11)
+            // One-time defaults migration for updated patch behavior.
+            if (PlayerPrefs.GetInt("Andromeda_Version", 0) < 12)
             {
                 PlayerPrefs.SetString("Andromeda_ApiUrl", "https://andromeda.kimotherapy.dev");
                 PlayerPrefs.SetString("Andromeda_LogIp", "log.andromeda.kimotherapy.dev");
                 PlayerPrefs.SetString("Andromeda_LogPort", "9090");
-                PlayerPrefs.SetInt("Andromeda_Version", 11);
+                if (!PlayerPrefs.HasKey("Andromeda_LobbySize"))
+                    PlayerPrefs.SetString("Andromeda_LobbySize", "12");
+                PlayerPrefs.SetInt("Andromeda_Version", 12);
                 PlayerPrefs.Save();
             }
 
             _apiUrlInput = PlayerPrefs.GetString("Andromeda_ApiUrl", RestApi.API_URL);
-            _lobbySizeInput = PlayerPrefs.GetString("Andromeda_LobbySize", "8");
+            _lobbySizeInput = PlayerPrefs.GetString("Andromeda_LobbySize", "12");
             _upnpEnabled = PlayerPrefs.GetInt("Andromeda_UpnpEnabled", 0) == 1;
             _showPublicIp = PlayerPrefs.GetInt("Andromeda_ShowPublicIp", 0) == 1;
+
+            if (int.TryParse(_lobbySizeInput, out int mp) && mp >= 2)
+                DedicatedServerStartup.MaxPlayers = mp;
+            else
+            {
+                // Keep a safe default if saved settings are malformed.
+                _lobbySizeInput = "12";
+                DedicatedServerStartup.MaxPlayers = 12;
+            }
 
             if (DedicatedServerStartup.IsServer && !string.IsNullOrWhiteSpace(DedicatedServerStartup.ForcedApiUrl))
                 _apiUrlInput = DedicatedServerStartup.ForcedApiUrl;

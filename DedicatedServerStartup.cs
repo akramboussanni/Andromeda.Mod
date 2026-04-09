@@ -18,7 +18,7 @@ namespace Andromeda.Mod
         public static bool IsPublicSession { get; private set; }
         public static string GamemodeData { get; private set; }
         public static string ForcedApiUrl { get; private set; }
-        public static int MaxPlayers { get; set; } = 8;
+        public static int MaxPlayers { get; set; } = 12;
         private static bool initialized = false;
         private static DateTime startupTime;
         private static DateTime lastHeartbeat;
@@ -184,8 +184,18 @@ namespace Andromeda.Mod
 
             string maxPlayersArg = GetArg(args, "--max-players")
                 ?? System.Environment.GetEnvironmentVariable("ANDROMEDA_MAX_PLAYERS");
+            string maxPlayersSource = "settings/default";
             if (!string.IsNullOrEmpty(maxPlayersArg) && int.TryParse(maxPlayersArg, out int mp) && mp >= 2)
+            {
                 MaxPlayers = mp;
+                maxPlayersSource = "--max-players/env";
+            }
+
+            if (MaxPlayers < 2)
+            {
+                MaxPlayers = 12;
+                maxPlayersSource = "safety-fallback";
+            }
 
             Region = region;
             GameName = gameName;
@@ -194,6 +204,7 @@ namespace Andromeda.Mod
             GamemodeData = gamemodeData;
 
             NetworkDebugger.LogLobbyEvent($"[SERVER-INIT] Targeting: Port={port}, Mode={gamemodeKey}, Region={region}, Session={SessionId}");
+            NetworkDebugger.LogLobbyEvent($"[SERVER-INIT] Effective MaxPlayers={MaxPlayers} (source={maxPlayersSource})");
 
             try
             {

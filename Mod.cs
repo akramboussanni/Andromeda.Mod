@@ -126,6 +126,26 @@ namespace Andromeda.Mod
             } catch (Exception ex) { 
                 MelonLogger.Error($"[INIT-ERROR] Patching failed: {ex.Message}");
             }
+
+            // Async state-machine patches require explicit apply because the target
+            // method is compiler-generated (MoveNext), not the outer Setup method.
+            try
+            {
+                Andromeda.Mod.Patches.AndromedaServerMinPlayerPatch.Apply(harmony);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"[PATCH] MinPlayer state-machine apply failed: {ex.Message}");
+            }
+
+            try
+            {
+                Andromeda.Mod.Patches.AndromedaServerMaxPlayerPatch.Apply(harmony);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"[PATCH] MaxPlayer state-machine apply failed: {ex.Message}");
+            }
  
             MelonLogger.Msg("--------------------------------------------------");
             MelonLogger.Msg("[BOOT] PATCH REGISTRATION COMPLETE.");
@@ -159,6 +179,7 @@ namespace Andromeda.Mod
         {
             SteamLinkRequestsMenu.OnGUI();
             NetworkDebugger.OnGUI();
+            Andromeda.Mod.Patches.EarlyArmoryItemGuard.DrawWarningOverlay();
             Features.UpdateChecker.OnGUI();
         }
 
