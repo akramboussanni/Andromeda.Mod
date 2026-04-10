@@ -18,6 +18,12 @@ namespace Andromeda.Mod
         public static bool IsPublicSession { get; private set; }
         public static string GamemodeData { get; private set; }
         public static string ForcedApiUrl { get; private set; }
+        public static string ChannelCode { get; private set; }
+        public static string ChannelKey { get; private set; }
+        public static bool OnePlayerMode { get; private set; }
+        public static bool CheatsEnabled { get; private set; }
+        public static string PartyLeaderSteamId { get; private set; }
+        public static bool DebugMode { get; private set; }
         public static int MaxPlayers { get; set; } = 12;
         private static bool initialized = false;
         private static DateTime startupTime;
@@ -64,6 +70,33 @@ namespace Andromeda.Mod
                     RestApi.API_URL = ForcedApiUrl;
                     MelonLogger.Msg($"[STARTUP] API URL forced for this dedicated session: {RestApi.API_URL}");
                 }
+
+                string channelCodeArg = GetArg(args, "--channel-code");
+                string channelKeyArg = GetArg(args, "--channel-key");
+                ChannelCode = (string.IsNullOrWhiteSpace(channelCodeArg)
+                    ? System.Environment.GetEnvironmentVariable("ANDROMEDA_CHANNEL_CODE")
+                    : channelCodeArg) ?? string.Empty;
+                ChannelKey = (string.IsNullOrWhiteSpace(channelKeyArg)
+                    ? System.Environment.GetEnvironmentVariable("ANDROMEDA_CHANNEL_KEY")
+                    : channelKeyArg) ?? string.Empty;
+
+                OnePlayerMode = args.Any(arg =>
+                    string.Equals(arg, "--one-player-mode", StringComparison.OrdinalIgnoreCase))
+                    || string.Equals(System.Environment.GetEnvironmentVariable("ANDROMEDA_ONE_PLAYER_MODE"), "1", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(System.Environment.GetEnvironmentVariable("ANDROMEDA_ONE_PLAYER_MODE"), "true", StringComparison.OrdinalIgnoreCase);
+
+                CheatsEnabled = args.Any(arg =>
+                    string.Equals(arg, "--cheats-enabled", StringComparison.OrdinalIgnoreCase))
+                    || string.Equals(System.Environment.GetEnvironmentVariable("ANDROMEDA_CHEATS_ENABLED"), "1", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(System.Environment.GetEnvironmentVariable("ANDROMEDA_CHEATS_ENABLED"), "true", StringComparison.OrdinalIgnoreCase);
+
+                PartyLeaderSteamId = GetArg(args, "--party-leader-steam-id")
+                    ?? System.Environment.GetEnvironmentVariable("ANDROMEDA_PARTY_LEADER_STEAM_ID");
+
+                DebugMode = args.Any(arg =>
+                    string.Equals(arg, "--debug", StringComparison.OrdinalIgnoreCase))
+                    || string.Equals(System.Environment.GetEnvironmentVariable("ANDROMEDA_FORCE_VERBOSE_DEBUG"), "1", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(System.Environment.GetEnvironmentVariable("ANDROMEDA_FORCE_VERBOSE_DEBUG"), "true", StringComparison.OrdinalIgnoreCase);
 
                 MelonLogger.Msg($"[STARTUP] Dedicated Server detected. Environment Markers FOUND.");
                 MelonLogger.Msg("!!! DEDICATED SERVER MODE DETECTED !!!");
@@ -185,13 +218,18 @@ namespace Andromeda.Mod
             string maxPlayersArg = GetArg(args, "--max-players")
                 ?? System.Environment.GetEnvironmentVariable("ANDROMEDA_MAX_PLAYERS");
             string maxPlayersSource = "settings/default";
-            if (!string.IsNullOrEmpty(maxPlayersArg) && int.TryParse(maxPlayersArg, out int mp) && mp >= 2)
+            if (!string.IsNullOrEmpty(maxPlayersArg) && int.TryParse(maxPlayersArg, out int mp) && mp >= 1)
             {
                 MaxPlayers = mp;
                 maxPlayersSource = "--max-players/env";
             }
 
-            if (MaxPlayers < 2)
+            if (OnePlayerMode)
+            {
+                MaxPlayers = 1;
+                maxPlayersSource = "one-player-mode";
+            }
+            else if (MaxPlayers < 2)
             {
                 MaxPlayers = 12;
                 maxPlayersSource = "safety-fallback";

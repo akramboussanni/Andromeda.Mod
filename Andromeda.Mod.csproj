@@ -462,28 +462,8 @@
         </Reference>
     </ItemGroup>
     <ItemGroup>
-        <Compile Include="Features\UpdateChecker.cs" />
-        <Compile Include="Features\UPnPFeature.cs" />
-        <Compile Include="Features\AdminCommandPoller.cs" />
-        <Compile Include="Features\SteamLinkRequestsMenu.cs" />
-        <Compile Include="Mod.cs" />
-        <Compile Include="BuildInfo.cs" />
-        <Compile Include="NetworkDebugger\NetworkDebugger.Core.cs" />
-        <Compile Include="NetworkDebugger\NetworkDebugger.Gui.cs" />
-        <Compile Include="NetworkDebugger\NetworkDebugger.Data.cs" />
-        <Compile Include="NetworkDebugger\NetworkDebugger.RequestLogging.cs" />
-        <Compile Include="RestApi.cs" />
-        <Compile Include="DedicatedServerStartup.cs" />
-        <Compile Include="Features\PerkFeatures.cs" />
-        <Compile Include="Patches\AnalyticsPatch.cs" />
-        <Compile Include="Patches\SteamPatch.cs" />
-        <Compile Include="Patches\UserStorePatch.cs" />
-        <Compile Include="Patches\EnvironmentPatch.cs" />
-        <Compile Include="Patches\LogRedirectPatch.cs" />
-        <Compile Include="Patches\MiscPatches.cs" />
-        <Compile Include="Patches\NetworkPatches.cs" />
-        <Compile Include="Patches\GameSessionPatches.cs" />
-        <Compile Include="Properties\AssemblyInfo.cs" />
+      <!-- Auto-include source files to avoid fragile manual path maintenance during refactors. -->
+      <Compile Include="**\*.cs" Exclude="bin\**\*;obj\**\*" />
     </ItemGroup>
     <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
     <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

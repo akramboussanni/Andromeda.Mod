@@ -90,9 +90,11 @@ namespace Andromeda.Mod
                     string url = __instance.url;
                     if (string.IsNullOrEmpty(url) || !url.StartsWith("http")) return;
 
-                    // PERFORMANCE GATE: Only log/format if the debugger is open or it's a critical create request
+                    // PERFORMANCE GATE: when capture is OFF, only touch requests if the debugger is open
+                    // or if this is a create flow we may rewrite for maxPlayers.
                     bool isCreate = url.Contains("/party/create") || url.Contains("/games/new") || url.Contains("/games/custom/new");
-                    if (!_showGui && !isCreate) return;
+                    bool captureEnabled = StoreApiRequests;
+                    if (!captureEnabled && !_showGui && !isCreate) return;
 
                     string body = "";
                     if (__instance.uploadHandler != null && __instance.uploadHandler.data != null)
@@ -122,7 +124,7 @@ namespace Andromeda.Mod
                     }
 
                     // Storage is intentionally disabled; still allow request-body mutation above.
-                    if (!_storeApiRequests) return;
+                    if (!captureEnabled) return;
 
                     string path = "Unknown";
                     string typeName = "Unknown/Custom";
@@ -163,23 +165,36 @@ namespace Andromeda.Mod
             public static void Postfix(UnityWebRequest __instance, UnityWebRequestAsyncOperation __result)
             {
                 if (__result == null) return;
-                if (!_storeApiRequests) return;
+                if (!StoreApiRequests) return;
 
                 var req = Requests.LastOrDefault(r => r.Url == __instance.url && r.Status == "Pending");
+                string capturedUrl = __instance.url;
 
                 __result.completed += (operation) =>
                 {
                     try
                     {
-                        if (req == null) return;
+                        string responseText = null;
+                        try { responseText = __instance.downloadHandler?.text; } catch { }
+                        Andromeda.Mod.Patches.ApiSharedParseResponsePatch.TryCaptureFromApiResponse(capturedUrl, responseText);
 
-                        req.ResponseCode = (int)__instance.responseCode;
-                        req.Status = (__instance.isNetworkError || __instance.isHttpError) ? "Error" : "Success";
-                        req.Error = __instance.error;
-
-                        if (__instance.downloadHandler != null)
+                        if (req != null)
                         {
-                            req.ResponseBody = FormatJson(__instance.downloadHandler.text);
+                            try
+                            {
+                                req.ResponseCode = (int)__instance.responseCode;
+                                req.Status = (__instance.isNetworkError || __instance.isHttpError) ? "Error" : "Success";
+                                req.Error = __instance.error;
+                            }
+                            catch
+                            {
+                                req.Status = "Success";
+                            }
+
+                            if (responseText != null)
+                            {
+                                req.ResponseBody = FormatJson(responseText);
+                            }
                         }
                     }
                     catch (Exception e)

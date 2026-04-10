@@ -5,6 +5,7 @@ using HarmonyLib;
 using UnityEngine;
 using Andromeda.Mod.Patches;
 using Andromeda.Mod.Features;
+using Andromeda.Mod.Settings;
 
 namespace Andromeda.Mod
 {
@@ -33,13 +34,23 @@ namespace Andromeda.Mod
             // Load settings before any patches
             NetworkDebugger.LoadSettingsEarly();
 
+            if (DedicatedServerStartup.IsServer && DedicatedServerStartup.DebugMode)
+            {
+                AndromedaClientSettings.SetVerboseDebugLoggingEnabled(true, persist: false);
+                MelonLogger.Msg("[STARTUP] --debug detected. Verbose debug logging enabled for this server process.");
+            }
+
+            LobbySettingsSystem.Initialize();
+            LobbySettingsReplicationFeature.Initialize();
+            Features.TextChatCommands.TextChatCommandSystem.Initialize();
+
             PatchServiceAddress();
 
             var harmony = new HarmonyLib.Harmony("com.moul7anout.andromeda");
             ApplyManualPatches(harmony);
 
-            ApiData.OnReload += CryonautModelFix.ApplyToApiData;
-            CryonautModelFix.ApplyToApiData();
+            // ApiData.OnReload += CryonautModelFix.ApplyToApiData;
+            // CryonautModelFix.ApplyToApiData();
         }
 
         [Obsolete]
@@ -173,6 +184,9 @@ namespace Andromeda.Mod
         {
             NetworkDebugger.Update();
             DedicatedServerStartup.Update();
+            Networking.Messaging.NetworkMessageService.Update();
+            LobbySettingsReplicationFeature.Update();
+            UiDiscoveryDumpFeature.Update();
         }
 
         public override void OnGUI()

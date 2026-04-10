@@ -9,6 +9,18 @@ namespace Andromeda.Mod.Patches
     [HarmonyPatch]
     public static class SteamSdkBypass
     {
+        [HarmonyPatch(typeof(Steam), "get_AuthToken")]
+        [HarmonyPrefix]
+        public static bool PrefixSteamAuthToken(ref string __result)
+        {
+            if (DedicatedServerStartup.IsServer)
+            {
+                __result = "DEDICATED_SERVER_TOKEN";
+                return false;
+            }
+            return true;
+        }
+
         [HarmonyPatch(typeof(Steam), "get_Id")]
         [HarmonyPrefix]
         public static bool PrefixSteamId(ref string __result)
@@ -57,6 +69,9 @@ namespace Andromeda.Mod.Patches
                 }
 
                 MelonLogger.Msg("[STEAM-SERVER] Initializing proper SteamServer (no client required)...");
+                // Always set authToken first so ApiShared.Post never hangs waiting for it.
+                typeof(Steam).GetField("authToken", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.SetValue(__instance, "DEDICATED_SERVER_TOKEN");
+
                 try
                 {
                     // Steam does not actually bind the GamePort, it just advertises it.
@@ -69,7 +84,7 @@ namespace Andromeda.Mod.Patches
                         {
                             gamePort = (ushort)envPort;
                         }
-                    } 
+                    }
                     catch { }
 
                     var init = new Steamworks.SteamServerInit("Enemy On Board", "Enemy On Board")
@@ -81,10 +96,6 @@ namespace Andromeda.Mod.Patches
                     };
                     Steamworks.SteamServer.Init(999860, init, true);
                     Steamworks.SteamServer.LogOnAnonymous();
-                    
-                    // Set authToken so Steam.IsLoaded returns true and passes all gatekeeping checks
-                    typeof(Steam).GetField("authToken", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.SetValue(__instance, "DEDICATED_SERVER_TOKEN");
-                    
                     MelonLogger.Msg("[STEAM-SERVER] Successfully logged on anonymously to Steam backend.");
                 }
                 catch (Exception ex)

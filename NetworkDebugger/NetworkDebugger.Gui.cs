@@ -175,6 +175,16 @@ namespace Andromeda.Mod
             _upnpEnabled = GUILayout.Toggle(_upnpEnabled, "Enable UPnP Port Forwarding");
             GUILayout.EndHorizontal();
 
+            GUILayout.BeginHorizontal();
+            _firstPersonEnabled = GUILayout.Toggle(_firstPersonEnabled, "Enable First-Person Camera (In-Game)");
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("FPS Yaw Sensitivity:", GUILayout.Width(140));
+            _firstPersonYawSensitivity = GUILayout.HorizontalSlider(_firstPersonYawSensitivity, 0.05f, 3f, GUILayout.Width(220));
+            GUILayout.Label($"{_firstPersonYawSensitivity:F2}", GUILayout.Width(45));
+            GUILayout.EndHorizontal();
+
             if (GUILayout.Button("SAVE SETTINGS", GUILayout.Height(30)))
             {
                 SaveSettings();
@@ -206,6 +216,8 @@ namespace Andromeda.Mod
             GUILayout.Label($"<b>Log Server:</b> {_logIpInput}:{_logPortInput}");
             GUILayout.Label($"<b>Game Engine Endpoint:</b> {ApiShared.SERVICE_ADDRESS}");
             GUILayout.Label($"<b>ApiData.IsLoaded:</b> {(ApiData.IsLoaded ? "<color=green>TRUE</color>" : "<color=red>FALSE</color>")}");
+            GUILayout.Label($"<b>First-Person:</b> {(_firstPersonEnabled ? "<color=green>ENABLED</color>" : "<color=yellow>DISABLED</color>")}");
+            GUILayout.Label($"<b>FPS Yaw Sensitivity:</b> {_firstPersonYawSensitivity:F2}");
 
             string sceneName = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
             string currentMode = "None";
@@ -270,32 +282,23 @@ namespace Andromeda.Mod
 
         public static void ForceStart()
         {
-            var lobby = UnityEngine.Object.FindObjectOfType<LobbyServer>();
-            if (lobby != null)
+            try
             {
-                // Set all players to ready
-                var playersField = typeof(LobbyShared).GetField("players", BindingFlags.NonPublic | BindingFlags.Instance);
-                if (playersField != null)
+                bool ok = ForceStartFeature.TryForceStart("F10 menu", out string outcome);
+                if (ok)
                 {
-                    var players = playersField.GetValue(lobby) as Dictionary<PlayerId, LobbyShared.Player>;
-                    if (players != null)
-                    {
-                        foreach (var key in players.Keys.ToList())
-                        {
-                            var p = players[key];
-                            p.isReady = true;
-                            players[key] = p;
-                        }
-                    }
+                    MelonLogger.Msg($"[DEBUG-UI] {outcome}");
+                    NetworkDebugger.LogLobbyEvent($"[DEBUG-UI] {outcome}");
                 }
-                // Send update
-                var sendUpdate = typeof(LobbyServer).GetMethod("SendUpdate", BindingFlags.NonPublic | BindingFlags.Instance);
-                sendUpdate?.Invoke(lobby, null);
-                MelonLogger.Msg("[DEBUG-UI] Force Start triggered: All players set to READY.");
+                else
+                {
+                    MelonLogger.Warning($"[DEBUG-UI] Force Start failed: {outcome}");
+                    NetworkDebugger.LogLobbyEvent($"[DEBUG-UI] Force Start failed: {outcome}", "Warning");
+                }
             }
-            else
+            catch (Exception ex)
             {
-                MelonLogger.Warning("[DEBUG-UI] Could not find LobbyServer to force start.");
+                MelonLogger.Error($"[DEBUG-UI] Force Start exception: {ex.Message}");
             }
         }
 

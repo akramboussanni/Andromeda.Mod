@@ -2,8 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using Andromeda.Mod.Features;
+using Andromeda.Mod.Settings;
 using MelonLoader;
 using UnityEngine;
+using LobbySettings = Andromeda.Mod.Settings.AndromedaSettings;
+using ClientSettings = Andromeda.Mod.Settings.AndromedaClientSettings;
 
 namespace Andromeda.Mod
 {
@@ -27,7 +30,8 @@ namespace Andromeda.Mod
         public static List<NetworkRequest> Requests = new List<NetworkRequest>();
         public static Dictionary<string, Type> EndpointTypeMap = new Dictionary<string, Type>();
         private const int MaxRequests = 50;
-        private static readonly bool _storeApiRequests = false;
+        private static bool StoreApiRequests => ClientSettings.NetworkDebuggerRequestCaptureEnabled.Value;
+        public static bool VerboseLoggingEnabled => ClientSettings.VerboseDebugLoggingEnabled.Value;
 
         // API Settings
         private static string _apiUrlInput = RestApi.API_URL;
@@ -41,6 +45,8 @@ namespace Andromeda.Mod
         public static string LogHost => _logIpInput;
         private static string _lobbySizeInput = "12";
         private static bool _upnpEnabled = false; // Disabled by default
+        private static bool _firstPersonEnabled = false;
+        private static float _firstPersonYawSensitivity = 0.35f;
         private static string _publicIp = "Fetching...";
         private static bool _showPublicIp = false; // Hidden by default as requested
 
@@ -84,16 +90,43 @@ namespace Andromeda.Mod
             return string.IsNullOrEmpty(username) ? "Unknown user" : username;
         }
 
-        public static bool IsUpnpEnabled => _upnpEnabled;
+        public static bool IsUpnpEnabled => ClientSettings.UpnpEnabled.Value;
+        public static bool IsFirstPersonEnabled => LobbySettings.FirstPersonEnabled.Value;
+        public static float FirstPersonYawSensitivity => ClientSettings.FirstPersonYawSensitivity.Value;
+        public static int[] AllowedLobbySizes => LobbySettings.AllowedLobbySizes;
+
+        public static int GetLobbySize()
+        {
+            LobbySettings.Initialize();
+            return LobbySettings.LobbySize.Value;
+        }
+
+        public static bool SetLobbySize(int maxPlayers, bool persist = true)
+        {
+            bool ok = LobbySettings.SetLobbySize(maxPlayers, persist);
+            _lobbySizeInput = LobbySettings.LobbySize.Value.ToString();
+            return ok;
+        }
+
+        public static void SetFirstPersonEnabled(bool enabled, bool persist = true)
+        {
+            LobbySettings.SetFirstPersonEnabled(enabled, persist);
+            _firstPersonEnabled = LobbySettings.FirstPersonEnabled.Value;
+        }
 
         public static void SetUpnpEnabled(bool enabled)
         {
             _upnpEnabled = enabled;
+            ClientSettings.SetUpnpEnabled(enabled, persist: false);
         }
 
         public static void LogLobbyEvent(string info, string status = "Info")
         {
-            if (status == "Error") MelonLogger.Error($"[DEBUG-LOG] {info}");
+            bool isError = string.Equals(status, "Error", StringComparison.OrdinalIgnoreCase);
+            if (!VerboseLoggingEnabled && !isError)
+                return;
+
+            if (isError) MelonLogger.Error($"[DEBUG-LOG] {info}");
             else MelonLogger.Msg($"[DEBUG-LOG] {info}");
 
             string steamId = null;
@@ -168,18 +201,13 @@ namespace Andromeda.Mod
             }
 
             _apiUrlInput = PlayerPrefs.GetString("Andromeda_ApiUrl", RestApi.API_URL);
-            _lobbySizeInput = PlayerPrefs.GetString("Andromeda_LobbySize", "12");
-            _upnpEnabled = PlayerPrefs.GetInt("Andromeda_UpnpEnabled", 0) == 1;
+            LobbySettings.Initialize();
+            ClientSettings.Initialize();
+            _lobbySizeInput = LobbySettings.LobbySize.Value.ToString();
+            _upnpEnabled = ClientSettings.UpnpEnabled.Value;
+            _firstPersonEnabled = LobbySettings.FirstPersonEnabled.Value;
+            _firstPersonYawSensitivity = ClientSettings.FirstPersonYawSensitivity.Value;
             _showPublicIp = PlayerPrefs.GetInt("Andromeda_ShowPublicIp", 0) == 1;
-
-            if (int.TryParse(_lobbySizeInput, out int mp) && mp >= 2)
-                DedicatedServerStartup.MaxPlayers = mp;
-            else
-            {
-                // Keep a safe default if saved settings are malformed.
-                _lobbySizeInput = "12";
-                DedicatedServerStartup.MaxPlayers = 12;
-            }
 
             if (DedicatedServerStartup.IsServer && !string.IsNullOrWhiteSpace(DedicatedServerStartup.ForcedApiUrl))
                 _apiUrlInput = DedicatedServerStartup.ForcedApiUrl;
@@ -231,16 +259,18 @@ namespace Andromeda.Mod
             PlayerPrefs.SetString("Andromeda_ApiUrl", _apiUrlInput);
             PlayerPrefs.SetString("Andromeda_LogIp", _logIpInput);
             PlayerPrefs.SetString("Andromeda_LogPort", _logPortInput);
-            PlayerPrefs.SetString("Andromeda_LobbySize", _lobbySizeInput);
-            PlayerPrefs.SetInt("Andromeda_UpnpEnabled", _upnpEnabled ? 1 : 0);
+            LobbySettings.SetLobbySize(int.TryParse(_lobbySizeInput, out int parsed) ? parsed : LobbySettings.LobbySize.Value, persist: false);
+            ClientSettings.SetUpnpEnabled(_upnpEnabled, persist: false);
+            LobbySettings.SetFirstPersonEnabled(_firstPersonEnabled, persist: false);
+            ClientSettings.SetFirstPersonYawSensitivity(_firstPersonYawSensitivity, persist: false);
             PlayerPrefs.SetInt("Andromeda_ShowPublicIp", _showPublicIp ? 1 : 0);
+            LobbySettings.SaveAll();
+            ClientSettings.SaveAll();
             PlayerPrefs.Save();
 
-            // Update the live MaxPlayers value for the host
-            if (int.TryParse(_lobbySizeInput, out int mp) && mp >= 2)
-            {
-                DedicatedServerStartup.MaxPlayers = mp;
-            }
+            _lobbySizeInput = LobbySettings.LobbySize.Value.ToString();
+            _firstPersonEnabled = LobbySettings.FirstPersonEnabled.Value;
+            _firstPersonYawSensitivity = ClientSettings.FirstPersonYawSensitivity.Value;
         }
 
         public static void Update()

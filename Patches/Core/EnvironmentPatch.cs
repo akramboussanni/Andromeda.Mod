@@ -1,5 +1,6 @@
 using HarmonyLib;
 using MelonLoader;
+using UnityEngine;
 
 namespace Andromeda.Mod.Patches
 {
@@ -25,9 +26,13 @@ namespace Andromeda.Mod.Patches
 
         public static bool IsHost()
         {
-            // Environment.IsHost does not exist. We use DedicatedServerStartup.IsServer
-            // as our indicator for being the primary authority.
-            return DedicatedServerStartup.IsServer;
+            if (DedicatedServerStartup.IsServer)
+                return true;
+
+            if (Singleton.Existing<ProgramServer>() != null)
+                return true;
+
+            return Object.FindObjectOfType<ProgramServer>() != null;
         }
     }
 }

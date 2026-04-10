@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using HarmonyLib;
@@ -9,40 +10,84 @@ using UnityEngine;
 using UnityEngine.Networking;
 using Windwalk.Net;
 using MelonLoader;
+using Andromeda.Mod.Features;
+using Andromeda.Mod.Features.TextChatCommands;
+using Andromeda.Mod.Networking.Messaging;
+using Andromeda.Mod.Settings;
 
 namespace Andromeda.Mod.Patches
 {
     internal static class NameColorTempDebug
     {
         // TEMP: set to false after diagnosing color flow.
-        public static bool Enabled = true;
+        public static bool Enabled = false;
 
         public static void Log(string message)
         {
             if (!Enabled)
                 return;
 
+            if (!AndromedaClientSettings.VerboseDebugLoggingEnabled.Value)
+                return;
+
             MelonLogger.Msg($"[COLOR-PATCH][TEMP] {message}");
         }
     }
 
-    [HarmonyPatch(typeof(ApiShared), "ParseResponse")]
+    [HarmonyPatch]
     public static class ApiSharedParseResponsePatch
     {
         public static readonly Dictionary<string, Color> SteamIdToColor = new Dictionary<string, Color>();
 
-        public static void Postfix(UnityWebRequest request, object __result)
+        [HarmonyTargetMethods]
+        public static IEnumerable<MethodBase> TargetMethods()
+        {
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+
+            return typeof(ApiShared)
+                .GetMethods(flags)
+                .Where(m => string.Equals(m.Name, "ParseResponse", StringComparison.Ordinal))
+                .Where(m => !m.IsGenericMethodDefinition && !m.ContainsGenericParameters)
+                .Where(m => m.GetParameters().Any(p => p.ParameterType == typeof(UnityWebRequest)));
+        }
+
+        [HarmonyPrepare]
+        public static bool Prepare()
+        {
+            return TargetMethods().Any();
+        }
+
+        public static void TryCaptureFromApiResponse(string url, string responseBody)
+        {
+            if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(responseBody))
+                return;
+
+            if (!url.Contains("/players/get") && !url.Contains("/players/auth/get"))
+                return;
+
+            TryCapturePayload(url, responseBody);
+        }
+
+        public static void Postfix(UnityWebRequest request)
         {
             if (request == null || request.downloadHandler == null || string.IsNullOrEmpty(request.downloadHandler.text))
+                return;
+
+            TryCapturePayload(request.url, request.downloadHandler.text);
+        }
+
+        private static void TryCapturePayload(string url, string responseBody)
+        {
+            if (string.IsNullOrEmpty(responseBody))
                 return;
 
             try
             {
                 // Only intercept player profile data
-                if (request.url.Contains("/players/get") || request.url.Contains("/players/auth/get"))
+                if (url.Contains("/players/get") || url.Contains("/players/auth/get"))
                 {
-                    NameColorTempDebug.Log($"ParseResponse hit: {request.url}");
-                    var json = JObject.Parse(request.downloadHandler.text);
+                    NameColorTempDebug.Log($"API payload hit: {url}");
+                    var json = JObject.Parse(responseBody);
                     var data = json["data"];
                     
                     if (data == null)
@@ -70,7 +115,8 @@ namespace Andromeda.Mod.Patches
             }
             catch (Exception ex)
             {
-                MelonLogger.Warning($"[COLOR-PATCH] Failed to parse nameColor from JSON: {ex.Message}");
+                if (AndromedaClientSettings.VerboseDebugLoggingEnabled.Value)
+                    MelonLogger.Warning($"[COLOR-PATCH] Failed to parse nameColor from JSON: {ex.Message}");
             }
         }
 
@@ -234,7 +280,8 @@ namespace Andromeda.Mod.Patches
             }
             catch (Exception ex)
             {
-                MelonLogger.Warning($"[COLOR-PATCH] Failed to apply colored names: {ex.Message}");
+                if (AndromedaClientSettings.VerboseDebugLoggingEnabled.Value)
+                    MelonLogger.Warning($"[COLOR-PATCH] Failed to apply colored names: {ex.Message}");
             }
         }
     }
@@ -338,17 +385,71 @@ namespace Andromeda.Mod.Patches
         private static readonly FieldInfo DeadChatColorField = AccessTools.Field(typeof(TextChat), "deadChatColor");
         private static readonly FieldInfo ChatMessagePrefabField = AccessTools.Field(typeof(TextChat), "chatMessagePrefab");
         private static readonly FieldInfo ChatMessageContentField = AccessTools.Field(typeof(TextChat), "chatMessageContent");
+        private static readonly Dictionary<string, float> RecentMessages = new Dictionary<string, float>();
+        private const float MessageDedupWindowSeconds = 0.4f;
+
+        private static bool IsDuplicate(PlayerId playerId, VoiceClient.Room room, string message)
+        {
+            float now = Time.realtimeSinceStartup;
+            string key = playerId + "|" + room + "|" + (message ?? string.Empty);
+
+            if (RecentMessages.TryGetValue(key, out var lastSeen) && now - lastSeen <= MessageDedupWindowSeconds)
+            {
+                RecentMessages[key] = now;
+                return true;
+            }
+
+            RecentMessages[key] = now;
+
+            if (RecentMessages.Count > 64)
+            {
+                var staleKeys = new List<string>();
+                foreach (var pair in RecentMessages)
+                {
+                    if (now - pair.Value > MessageDedupWindowSeconds * 4f)
+                        staleKeys.Add(pair.Key);
+                }
+
+                foreach (var stale in staleKeys)
+                    RecentMessages.Remove(stale);
+            }
+
+            return false;
+        }
 
         public static bool Prefix(TextChat __instance, VoiceClient.Room room, PlayerId playerId, string message)
         {
             try
             {
-                Log.Info("text chat message", ("playerId", playerId), ("room", room), ("message", message));
+                if (message.StartsWith("/"))
+                {
+                    NetworkMessageService.SendToServer(new ChatCommandMessage { command = message });
+                    return false;
+                }
+
+                if (IsDuplicate(playerId, room, message))
+                {
+                    if (AndromedaClientSettings.VerboseDebugLoggingEnabled.Value)
+                        MelonLogger.Msg($"[CHAT] Duplicate message suppressed for {playerId} in room {room}.");
+                    return false;
+                }
+
+                if (AndromedaClientSettings.VerboseDebugLoggingEnabled.Value)
+                {
+                    Log.Info()
+                        .Str("player_id", playerId.ToString())
+                        .Str("room", room.ToString())
+                        .Str("message", message)
+                        .Msg("text chat message");
+                }
 
                 var userTuple = UserStore.Instance.Fetch(playerId);
                 if (!userTuple.Item2)
                 {
-                    Log.Info().Str("player_id", playerId.ToString()).Msg("received message from unknown player");
+                    if (AndromedaClientSettings.VerboseDebugLoggingEnabled.Value)
+                    {
+                        Log.Info().Str("player_id", playerId.ToString()).Msg("received message from unknown player");
+                    }
                     return false;
                 }
 
@@ -403,7 +504,8 @@ namespace Andromeda.Mod.Patches
             }
             catch (Exception ex)
             {
-                MelonLogger.Warning($"[COLOR-PATCH] Failed to apply chat name color: {ex.Message}");
+                if (AndromedaClientSettings.VerboseDebugLoggingEnabled.Value)
+                    MelonLogger.Warning($"[COLOR-PATCH] Failed to apply chat name color: {ex.Message}");
                 // If patch fails for any reason, let vanilla logic run.
                 return true;
             }
