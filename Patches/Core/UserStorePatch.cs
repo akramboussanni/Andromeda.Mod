@@ -24,6 +24,7 @@ namespace Andromeda.Mod.Patches
         }
 
         [HarmonyPatch(typeof(UserStore), "AddAll")]
+        [HarmonyPrefix]
         public static void PrefixAddAll(IEnumerable<UserStore.AddInfo> info)
         {
             if (info == null) return;

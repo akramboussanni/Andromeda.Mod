@@ -49,8 +49,8 @@ namespace Andromeda.Mod
             var harmony = new HarmonyLib.Harmony("com.moul7anout.andromeda");
             ApplyManualPatches(harmony);
 
-            // ApiData.OnReload += CryonautModelFix.ApplyToApiData;
-            // CryonautModelFix.ApplyToApiData();
+            ApiData.OnReload += CryonautModelFix.ApplyToApiData;
+            CryonautModelFix.ApplyToApiData();
         }
 
         [Obsolete]

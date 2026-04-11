@@ -89,7 +89,10 @@ namespace Andromeda.Mod.Features
             int playerCount = SetEveryoneReady(lobby);
 
             if (playerCount <= 1)
+            {
+                DedicatedServerStartup.OnePlayerMode = true;
                 PublishOnePlayerSpawnConfigToCore(source);
+            }
 
             ForceStartTriggered = true;
 

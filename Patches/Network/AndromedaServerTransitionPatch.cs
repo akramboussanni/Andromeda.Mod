@@ -10,7 +10,7 @@ using Windwalk.Net;
 
 namespace Andromeda.Mod.Patches
 {
-    [HarmonyPatch(typeof(AndromedaServerTransitionPatch))]
+    [HarmonyPatch]
     public static class AndromedaServerTransitionPatch
     {
         private static readonly HashSet<int> ObjectivesEntered = new HashSet<int>();

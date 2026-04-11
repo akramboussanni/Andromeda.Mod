@@ -1,0 +1,710 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using HarmonyLib;
+using MelonLoader;
+using UnityEngine;
+using Windwalk.Net;
+
+namespace Andromeda.Mod.Patches
+{
+    // Removed class-level attributes to prevent double-patching via MelonLoader auto-scan
+
+    [HarmonyPatch]
+    public static class CryonautModelFix
+    {
+        private const string CryonautGuid = "cryonaut";
+        private const string FinnGuid = "finn";
+        private static readonly bool DebugLogsEnabled = true;
+
+        public static SkinSpawnList.Key GetReplacementSkinKey()
+        {
+            SkinSpawnList.Key[] candidates =
+            {
+                SkinSpawnList.Key.WraithSpy,
+                SkinSpawnList.Key.Spy,
+                SkinSpawnList.Key.Medic,
+            };
+
+            foreach (var key in candidates)
+            {
+                try
+                {
+                    var settings = SkinSpawnList.Instance.Get(key);
+                    if (settings != null && !string.IsNullOrEmpty(settings.guid) && settings.prefab != null)
+                        return key;
+                }
+                catch
+                {
+                }
+            }
+
+            return SkinSpawnList.Key.WraithSpy;
+        }
+
+        private static void DebugLog(string message)
+        {
+            if (!DebugLogsEnabled)
+                return;
+            MelonLogger.Msg($"[CRYONAUT-DEBUG] {message}");
+        }
+
+        public static string GetReplacementSkinGuid()
+        {
+            try
+            {
+                var settings = SkinSpawnList.Instance.Get(GetReplacementSkinKey());
+                if (settings != null && !string.IsNullOrEmpty(settings.guid))
+                    return settings.guid;
+            }
+            catch
+            {
+            }
+
+            return "wraith_spy";
+        }
+
+        public static void ApplyToApiData()
+        {
+            try
+            {
+                DebugLog("ApplyToApiData start");
+                SkinSpawnList.Key replacementSkinKey = GetReplacementSkinKey();
+                string replacementSkinGuid = GetReplacementSkinGuid();
+                DebugLog($"ReplacementSkin resolved to: key={replacementSkinKey} guid={replacementSkinGuid}");
+
+                if (ApiData.Characters != null && ApiData.Characters.TryGetValue(CryonautGuid, out var cryonautChar) && cryonautChar != null)
+                {
+                    string before = cryonautChar.skins == null ? "<null>" : string.Join(",", cryonautChar.skins);
+                    cryonautChar.skins = new[] { replacementSkinGuid };
+                    DebugLog($"ApiData.Characters[cryonaut].skins: {before} -> {string.Join(",", cryonautChar.skins)}");
+                }
+                else
+                {
+                    DebugLog("ApiData.Characters missing cryonaut entry");
+                }
+
+                if (ApiData.Characters != null && ApiData.Characters.TryGetValue(FinnGuid, out var finnChar) && finnChar != null)
+                {
+                    string before = finnChar.skins == null ? "<null>" : string.Join(",", finnChar.skins);
+                    finnChar.skins = new[] { replacementSkinGuid };
+                    DebugLog($"ApiData.Characters[finn].skins: {before} -> {string.Join(",", finnChar.skins)}");
+                }
+
+                if (ApiData.Profile?.characters != null)
+                {
+                    foreach (var ch in ApiData.Profile.characters)
+                    {
+                        if (!string.Equals(ch.guid, CryonautGuid, StringComparison.OrdinalIgnoreCase)
+                            && !string.Equals(ch.guid, FinnGuid, StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        string before = ch.skins == null ? "<null>" : string.Join(",", ch.skins);
+                        ch.skins = new[] { replacementSkinGuid, CryonautGuid };
+                        DebugLog($"ApiData.Profile cryonaut skins: {before} -> {string.Join(",", ch.skins)}");
+                    }
+                }
+                else
+                {
+                    DebugLog("ApiData.Profile.characters unavailable");
+                }
+
+                // Persist a valid skin key so CharacterProgressionTab and Showcase never fall back to broken cryonaut model.
+                if (LocalUserData.Loadouts != null && LocalUserData.Loadouts.ContainsKey(CharacterSpawnList.Key.Cryonaut))
+                {
+                    var loadout = LocalUserData.Loadouts[CharacterSpawnList.Key.Cryonaut];
+                    var before = loadout.skin;
+                    loadout.skin = replacementSkinKey;
+                    LocalUserData.Loadouts[CharacterSpawnList.Key.Cryonaut] = loadout;
+                    LocalUserData.Save();
+                    DebugLog($"LocalUserData cryonaut skin key: {before} -> {loadout.skin}");
+                }
+                else
+                {
+                    DebugLog("LocalUserData.Loadouts missing cryonaut key");
+                }
+
+                DebugLog("ApplyToApiData end");
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CRYONAUT] Model remap fix failed: {ex.Message}");
+            }
+        }
+    }
+
+    [HarmonyPatch]
+    public static class SkinGuidRuntimeFix
+    {
+        private static bool _normalized;
+        private static bool _normalizing;
+        private static readonly Dictionary<string, string> AliasToGuid = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        private static string ToSnakeCase(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return string.Empty;
+
+            var chars = value.Trim().ToCharArray();
+            var output = new System.Text.StringBuilder(chars.Length + 8);
+            bool wroteUnderscore = false;
+
+            for (int i = 0; i < chars.Length; i++)
+            {
+                char c = chars[i];
+                if (char.IsLetterOrDigit(c))
+                {
+                    if (char.IsUpper(c) && output.Length > 0 && !wroteUnderscore)
+                        output.Append('_');
+
+                    output.Append(char.ToLowerInvariant(c));
+                    wroteUnderscore = false;
+                }
+                else if (!wroteUnderscore && output.Length > 0)
+                {
+                    output.Append('_');
+                    wroteUnderscore = true;
+                }
+            }
+
+            string snake = output.ToString().Trim('_');
+            if (snake.EndsWith("_skin_settings", StringComparison.OrdinalIgnoreCase))
+                snake = snake.Substring(0, snake.Length - "_skin_settings".Length);
+            else if (snake.EndsWith("_settings", StringComparison.OrdinalIgnoreCase))
+                snake = snake.Substring(0, snake.Length - "_settings".Length);
+
+            return snake.Trim('_');
+        }
+
+        private static string GetStringMember(object instance, string memberName)
+        {
+            if (instance == null)
+                return null;
+
+            var type = instance.GetType();
+            var field = type.GetField(memberName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            if (field != null && field.FieldType == typeof(string))
+                return field.GetValue(instance) as string;
+
+            var prop = type.GetProperty(memberName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            if (prop != null && prop.PropertyType == typeof(string) && prop.CanRead)
+                return prop.GetValue(instance, null) as string;
+
+            return null;
+        }
+
+        private static bool SetStringMember(object instance, string memberName, string value)
+        {
+            if (instance == null)
+                return false;
+
+            var type = instance.GetType();
+            var field = type.GetField(memberName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            if (field != null && field.FieldType == typeof(string))
+            {
+                field.SetValue(instance, value);
+                return true;
+            }
+
+            var prop = type.GetProperty(memberName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            if (prop != null && prop.PropertyType == typeof(string) && prop.CanWrite)
+            {
+                prop.SetValue(instance, value, null);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string BuildCandidateGuid(object settings, SkinSpawnList.Key key)
+        {
+            string fromName = ToSnakeCase(GetStringMember(settings, "name"));
+            if (!string.IsNullOrEmpty(fromName))
+                return fromName;
+
+            return ToSnakeCase(key.ToString());
+        }
+
+        private static void TrackAliases(SkinSpawnList.Key key, string guid, object settings)
+        {
+            if (string.IsNullOrEmpty(guid))
+                return;
+
+            AliasToGuid[key.ToString()] = guid;
+
+            string snakeKey = ToSnakeCase(key.ToString());
+            if (!string.IsNullOrEmpty(snakeKey))
+                AliasToGuid[snakeKey] = guid;
+
+            string name = GetStringMember(settings, "name");
+            if (!string.IsNullOrEmpty(name))
+            {
+                AliasToGuid[name] = guid;
+                string snakeName = ToSnakeCase(name);
+                if (!string.IsNullOrEmpty(snakeName))
+                    AliasToGuid[snakeName] = guid;
+            }
+        }
+
+        public static void EnsureGuid(object settings, SkinSpawnList.Key key)
+        {
+            if (settings == null)
+                return;
+
+            string guid = GetStringMember(settings, "guid");
+            if (string.IsNullOrWhiteSpace(guid))
+            {
+                string generated = BuildCandidateGuid(settings, key);
+                if (!string.IsNullOrEmpty(generated) && SetStringMember(settings, "guid", generated))
+                {
+                    guid = generated;
+                    MelonLogger.Msg($"[SKIN-GUID-FIX] Assigned missing guid: key={key} guid={generated}");
+                }
+            }
+
+            TrackAliases(key, guid, settings);
+        }
+
+        public static void NormalizeAllSkins()
+        {
+            if (_normalized || _normalizing)
+                return;
+
+            if (SkinSpawnList.Instance == null)
+                return;
+
+            _normalizing = true;
+            try
+            {
+                foreach (SkinSpawnList.Key key in Enum.GetValues(typeof(SkinSpawnList.Key)))
+                {
+                    try
+                    {
+                        var settings = SkinSpawnList.Instance.Get(key);
+                        EnsureGuid(settings, key);
+                    }
+                    catch
+                    {
+                        // Skip problematic entries and continue normalizing remaining skins.
+                    }
+                }
+
+                _normalized = true;
+            }
+            finally
+            {
+                _normalizing = false;
+            }
+        }
+
+        public static string ResolveAlias(string requestedGuid)
+        {
+            if (string.IsNullOrWhiteSpace(requestedGuid))
+                return requestedGuid;
+
+            NormalizeAllSkins();
+            if (AliasToGuid.TryGetValue(requestedGuid, out var mapped) && !string.IsNullOrEmpty(mapped))
+                return mapped;
+
+            return requestedGuid;
+        }
+    }
+
+    [HarmonyPatch]
+    public static class CryonautProgressionUiPatch
+    {
+        [HarmonyPatch(typeof(CharacterProgressionTab), "DisplayPerkProgression")]
+        [HarmonyPrefix]
+        public static void PrefixDisplayPerkProgression(CharacterProgressionTab __instance)
+        {
+            try
+            {
+                string currentCharacterGuid = Traverse.Create(__instance).Field("currentCharacterGuid").GetValue<string>();
+                MelonLogger.Msg($"[CRYONAUT-DEBUG] DisplayPerkProgression currentCharacterGuid={currentCharacterGuid}");
+                if (!string.Equals(currentCharacterGuid, "cryonaut", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(currentCharacterGuid, "finn", StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                CryonautModelFix.ApplyToApiData();
+
+                var currentLoadout = Traverse.Create(__instance).Field("currentLoadout").GetValue<CharacterProgressionTab.CharacterLoadout>();
+                currentLoadout.skin = CryonautModelFix.GetReplacementSkinKey();
+                Traverse.Create(__instance).Field("currentLoadout").SetValue(currentLoadout);
+                MelonLogger.Msg($"[CRYONAUT-DEBUG] DisplayPerkProgression forced currentLoadout.skin={currentLoadout.skin}");
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CRYONAUT] DisplayPerkProgression remap failed: {ex.Message}");
+            }
+        }
+
+        [HarmonyPatch(typeof(CharacterProgressionTab), "DisplayCharacterLoadout")]
+        [HarmonyPrefix]
+        public static void PrefixDisplay(CharacterSpawnList.Key characterKey)
+        {
+            if (characterKey != CharacterSpawnList.Key.Cryonaut)
+                return;
+
+            try
+            {
+                MelonLogger.Msg("[CRYONAUT-DEBUG] DisplayCharacterLoadout prefix hit for Cryonaut");
+                CryonautModelFix.ApplyToApiData();
+
+                if (LocalUserData.Loadouts != null && LocalUserData.Loadouts.ContainsKey(CharacterSpawnList.Key.Cryonaut))
+                {
+                    var replacement = CryonautModelFix.GetReplacementSkinKey();
+                    var loadout = LocalUserData.Loadouts[CharacterSpawnList.Key.Cryonaut];
+                    var before = loadout.skin;
+                    loadout.skin = replacement;
+                    LocalUserData.Loadouts[CharacterSpawnList.Key.Cryonaut] = loadout;
+                    LocalUserData.Save();
+                    MelonLogger.Msg($"[CRYONAUT-DEBUG] DisplayCharacterLoadout forced local loadout skin {before} -> {loadout.skin}");
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CRYONAUT] DisplayCharacterLoadout remap failed: {ex.Message}");
+            }
+        }
+
+        [HarmonyPatch(typeof(CharacterProgressionTab), "DisplayCharacterLoadout")]
+        [HarmonyPostfix]
+        public static void PostfixDisplay(CharacterSpawnList.Key characterKey)
+        {
+            if (characterKey != CharacterSpawnList.Key.Cryonaut)
+                return;
+
+            try
+            {
+                var replacement = CryonautModelFix.GetReplacementSkinKey();
+                UserInterface.Instance.Showcase.SetSkin(new SkinSpawnList.Key?(replacement), true);
+                MelonLogger.Msg($"[CRYONAUT-DEBUG] DisplayCharacterLoadout postfix forced Showcase.SetSkin({replacement}, force=true)");
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CRYONAUT] DisplayCharacterLoadout postfix force failed: {ex.Message}");
+            }
+        }
+
+        [HarmonyPatch(typeof(CharacterProgressionTab), "SetupSkinSelectionGrid")]
+        [HarmonyPrefix]
+        public static void PrefixSetupSkinGrid(CharacterProgressionTab __instance)
+        {
+            try
+            {
+                string currentCharacterGuid = Traverse.Create(__instance).Field("currentCharacterGuid").GetValue<string>();
+                MelonLogger.Msg($"[CRYONAUT-DEBUG] SetupSkinSelectionGrid currentCharacterGuid={currentCharacterGuid}");
+                if (!string.Equals(currentCharacterGuid, "cryonaut", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(currentCharacterGuid, "finn", StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                MelonLogger.Msg("[CRYONAUT-DEBUG] SetupSkinSelectionGrid prefix hit for cryonaut");
+                CryonautModelFix.ApplyToApiData();
+
+                if (ApiData.Characters != null && ApiData.Characters.TryGetValue("cryonaut", out var cryonautChar) && cryonautChar?.skins != null)
+                {
+                    MelonLogger.Msg($"[CRYONAUT-DEBUG] Grid source skins: {string.Join(",", cryonautChar.skins)}");
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CRYONAUT] SetupSkinSelectionGrid remap failed: {ex.Message}");
+            }
+        }
+    }
+
+    [HarmonyPatch]
+    public static class CryonautClassTabPatch
+    {
+        [HarmonyPatch(typeof(CharacterClassTab), "DisplayDetails")]
+        [HarmonyPrefix]
+        public static void PrefixDisplayDetails(CharacterSpawnList.Key characterKey, ref SkinSpawnList.Key? skinKey)
+        {
+            if (characterKey != CharacterSpawnList.Key.Cryonaut)
+                return;
+
+            CryonautModelFix.ApplyToApiData();
+            var replacement = CryonautModelFix.GetReplacementSkinKey();
+            skinKey = replacement;
+            MelonLogger.Msg($"[CRYONAUT-DEBUG] CharacterClassTab.DisplayDetails forced skinKey={replacement}");
+        }
+    }
+
+    [HarmonyPatch]
+    public static class CryonautShowcasePatch
+    {
+        [HarmonyPatch(typeof(Showcase), "SetSkin")]
+        [HarmonyPrefix]
+        public static void PrefixSetSkin(ref SkinSpawnList.Key? key, bool force)
+        {
+            MelonLogger.Msg($"[CRYONAUT-DEBUG] Showcase.SetSkin incoming key={(key.HasValue ? key.Value.ToString() : "<null>")}");
+            if (key.HasValue && key.Value == SkinSpawnList.Key.Cryonaut)
+            {
+                var replacement = CryonautModelFix.GetReplacementSkinKey();
+                MelonLogger.Msg($"[CRYONAUT-DEBUG] Showcase.SetSkin remap Cryonaut -> {replacement}");
+                key = replacement;
+            }
+
+            if (key.HasValue)
+            {
+                try
+                {
+                    var settings = SkinSpawnList.Instance.Get(key.Value);
+                    string guid = settings != null ? settings.guid : "<null>";
+                    bool hasPrefab = settings != null && settings.prefab != null;
+                    MelonLogger.Msg($"[CRYONAUT-DEBUG] Showcase.SetSkin final key={key.Value} guid={guid} prefab={(hasPrefab ? "yes" : "no")}");
+                }
+                catch (Exception ex)
+                {
+                    MelonLogger.Warning($"[CRYONAUT] Showcase.SetSkin debug probe failed: {ex.Message}");
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(Showcase), "SetSkin")]
+        [HarmonyPostfix]
+        public static void PostfixSetSkin(Showcase __instance, SkinSpawnList.Key? key, bool force)
+        {
+            try
+            {
+                if (!key.HasValue)
+                    return;
+
+                var replacementKey = CryonautModelFix.GetReplacementSkinKey();
+                if (key.Value != SkinSpawnList.Key.Cryonaut && key.Value != replacementKey)
+                    return;
+
+                var characterRoot = Traverse.Create(__instance).Field("characterRoot").GetValue<Transform>();
+                var rotationRoot = Traverse.Create(__instance).Field("rotationRoot").GetValue<Transform>();
+                if (characterRoot == null || rotationRoot == null)
+                    return;
+
+                if (characterRoot.childCount > 0)
+                    return;
+
+                var replacement = SkinSpawnList.Instance.Get(replacementKey);
+                if (replacement == null || replacement.prefab == null)
+                {
+                    MelonLogger.Warning($"[CRYONAUT] Showcase fallback spawn failed: {replacementKey} prefab missing");
+                    return;
+                }
+
+                var refs = UnityEngine.Object.Instantiate<CharacterReferences>(
+                    replacement.prefab,
+                    characterRoot.position,
+                    rotationRoot.rotation,
+                    characterRoot
+                );
+                WindwalkUtilities.SetAllToLayer(refs.gameObject, Layers.Showcase);
+
+                Traverse.Create(__instance).Field("references").SetValue(refs);
+
+                var itemKey = Traverse.Create(__instance).Field("itemKey").GetValue<ItemSpawnList.Key?>();
+                __instance.SetItem(itemKey, true);
+
+                MelonLogger.Msg($"[CRYONAUT-DEBUG] Showcase fallback spawned {replacement.guid} prefab manually");
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CRYONAUT] Showcase fallback spawn exception: {ex.Message}");
+            }
+        }
+    }
+
+    [HarmonyPatch]
+    public static class SkinGuidAliasPatch
+    {
+        [HarmonyPatch(typeof(SkinSpawnList), "GetByGuid")]
+        [HarmonyPrefix]
+        public static void Prefix(ref string guid)
+        {
+            guid = SkinGuidRuntimeFix.ResolveAlias(guid);
+
+            if (string.Equals(guid, "cryonaut", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(guid, "finn", StringComparison.OrdinalIgnoreCase))
+            {
+                string replacementGuid = CryonautModelFix.GetReplacementSkinGuid();
+                MelonLogger.Msg($"[CRYONAUT-DEBUG] SkinSpawnList.GetByGuid remap cryonaut -> {replacementGuid}");
+                guid = replacementGuid;
+            }
+        }
+    }
+
+    // [HarmonyPatch] - Muted due to undefined target method
+    public static class SkinGuidBackfillPatch
+    {
+        [HarmonyPatch(typeof(SkinSpawnList), "Get", new Type[] { typeof(SkinSpawnList.Key) })]
+        [HarmonyPostfix]
+        public static void Postfix(SkinSpawnList.Key key, object __result)
+        {
+            SkinGuidRuntimeFix.EnsureGuid(__result, key);
+        }
+    }
+
+    // [HarmonyPatch] - Muted due to undefined target method
+    public static class SkinKeyAliasPatch
+    {
+        [HarmonyPatch(typeof(SkinSpawnList), "Get", new Type[] { typeof(SkinSpawnList.Key) })]
+        [HarmonyPrefix]
+        public static void Prefix(ref SkinSpawnList.Key key)
+        {
+            if (key == SkinSpawnList.Key.Cryonaut)
+            {
+                var replacement = CryonautModelFix.GetReplacementSkinKey();
+                MelonLogger.Msg($"[CRYONAUT-DEBUG] SkinSpawnList.Get key remap Cryonaut -> {replacement}");
+                key = replacement;
+            }
+        }
+    }
+
+    [HarmonyPatch]
+    public static class CryonautSkinOwnershipAliasPatch
+    {
+        [HarmonyPatch(typeof(LoadoutSelectShared), "CheckSkinOwnership")]
+        [HarmonyPostfix]
+        public static void Postfix(
+            PlayerId playerId,
+            SkinSpawnList.Key key,
+            CharacterSpawnList.Key characterKey,
+            ref bool __result)
+        {
+            if (__result)
+                return;
+
+            try
+            {
+                string characterGuid = CharacterSpawnList.Instance.Get(characterKey).guid;
+                if (!string.Equals(characterGuid, "cryonaut", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(characterGuid, "finn", StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                string skinGuid = SkinSpawnList.Instance.Get(key).guid;
+                string replacementGuid = CryonautModelFix.GetReplacementSkinGuid();
+                SkinSpawnList.Key replacementKey = CryonautModelFix.GetReplacementSkinKey();
+                if (!string.Equals(skinGuid, replacementGuid, StringComparison.OrdinalIgnoreCase)
+                    && key != replacementKey)
+                    return;
+
+                var (data, loaded) = UserStore.Instance.Fetch(playerId);
+                if (!loaded || data.characters == null)
+                    return;
+
+                var cryonaut = data.characters.FirstOrDefault(c =>
+                    string.Equals(c.guid, "cryonaut", StringComparison.OrdinalIgnoreCase));
+                if (cryonaut?.skins == null)
+                    return;
+
+                if (cryonaut.skins.Any(s => string.Equals(s, "cryonaut", StringComparison.OrdinalIgnoreCase)))
+                {
+                    __result = true;
+                    MelonLogger.Msg($"[CRYONAUT-DEBUG] Ownership alias granted for player {playerId}: skin={skinGuid}, key={key}");
+                }
+                else
+                {
+                    MelonLogger.Msg($"[CRYONAUT-DEBUG] Ownership alias NOT granted for player {playerId}: profile skins={string.Join(",", cryonaut.skins)}");
+                }
+            }
+            catch
+            {
+                // Keep gameplay resilient if profile data is unavailable.
+            }
+        }
+    }
+    
+    [HarmonyPatch]
+    public static class UnlockableButtonSpawnerPatch
+    {
+        [HarmonyPatch(typeof(UnlockableButtonSpawner), "InitializePerkButton")]
+        [HarmonyPrefix]
+        public static void Prefix(string guid, ref int tier)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(guid) || ApiData.Profile == null || ApiData.Profile.characters == null) 
+                    return;
+
+                foreach (var playerChar in ApiData.Profile.characters)
+                {
+                    if (playerChar.perks != null)
+                    {
+                         foreach (var pGuid in playerChar.perks)
+                         {
+                             if (pGuid == guid)
+                             {
+                                 if (playerChar.ascension >= 6) tier = 2; // Gold
+                                 else tier = 0; // Blue
+                                 return;
+                             }
+                         }
+                    }
+                }
+            }
+            catch { }
+        }
+    }
+
+    [HarmonyPatch]
+    public static class WhatsNewCoordinatorPatch
+    {
+        [HarmonyPatch(typeof(WhatsNewCoordinator), "OnEnable")]
+        [HarmonyPrefix]
+        public static bool Prefix() => false; 
+    }
+
+    [HarmonyPatch]
+    public static class AppQuitPatch
+    {
+        [HarmonyPatch(typeof(Application), "Quit", new Type[0])]
+        [HarmonyPrefix]
+        public static void PrefixQuit()
+        {
+            if (DedicatedServerStartup.IsServer && !string.IsNullOrEmpty(DedicatedServerStartup.SessionId))
+            {
+                string reason = "Application.Quit() called.";
+                try { reason = System.Environment.StackTrace; } catch { }
+                RestApi.SendShutdown(DedicatedServerStartup.SessionId, reason);
+            }
+        }
+        
+        [HarmonyPatch(typeof(Application), "Quit", new Type[] { typeof(int) })]
+        [HarmonyPrefix]
+        public static void PrefixQuitExitCode(int exitCode)
+        {
+            if (DedicatedServerStartup.IsServer && !string.IsNullOrEmpty(DedicatedServerStartup.SessionId))
+            {
+                string reason = "Application.Quit(" + exitCode + ") called.";
+                try { reason = System.Environment.StackTrace; } catch { }
+                RestApi.SendShutdown(DedicatedServerStartup.SessionId, reason);
+            }
+        }
+    }
+
+    [HarmonyPatch]
+    public static class ReturnToLobbyRedirectPatch
+    {
+        [HarmonyPatch(typeof(RoundEndScreen), "LeaveGame")]
+        [HarmonyPrefix]
+        public static bool PrefixRoundEndLeave(RoundEndScreen __instance)
+        {
+            try
+            {
+                var displayingField = typeof(RoundEndScreen).GetField("displaying", BindingFlags.NonPublic | BindingFlags.Instance);
+                if (displayingField != null)
+                    displayingField.SetValue(__instance, false);
+            }
+            catch { }
+
+            MainMenu.Instance.LeaveGame();
+            return false;
+        }
+
+        [HarmonyPatch(typeof(AndromedaClient), "QuitToMenu")]
+        [HarmonyPrefix]
+        public static bool PrefixQuitToMenu()
+        {
+            MainMenu.Instance.LeaveGame();
+            return false;
+        }
+    }
+}

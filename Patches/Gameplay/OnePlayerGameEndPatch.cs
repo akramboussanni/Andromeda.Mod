@@ -1,35 +1,30 @@
 using HarmonyLib;
+using MelonLoader;
 
 namespace Andromeda.Mod.Patches.Gameplay
 {
-    [HarmonyPatch(typeof(AndromedaServer), "EndGame")]
-    public static class PreventSinglePlayerEndGame
-    {
-        [HarmonyPrefix]
-        public static bool Prefix()
-        {
-            if (DedicatedServerStartup.OnePlayerMode)
-            {
-                return false; // Skip the EndGame method
-            }
-            return true;
-        }
-    }
+    /// <summary>
+    /// Patches for OnePlayerMode (Single-Player / Sandbox).
+    /// Prevents the game from automatically ending due to win/loss conditions,
+    /// while still allowing manual EndGame calls (e.g. from chat commands).
+    /// </summary>
 
     [HarmonyPatch(typeof(AndromedaServer), "CheckAlive")]
     public static class ForceCheckAliveTrue
     {
-        [HarmonyPostfix]
-        public static void Postfix(AndromedaServer __instance, ref bool __result)
+        [HarmonyPrefix]
+        public static bool Prefix(AndromedaServer __instance, ref bool __result)
         {
             if (DedicatedServerStartup.OnePlayerMode)
             {
-                if (__instance.isRoundEnded)
-                {
-                    __instance.isRoundEnded = false;
-                }
+                // In OnePlayerMode, we ignore automatic win/loss conditions.
+                // We keep isRoundEnded false and return true to keep the game loop running.
+                __instance.GetType().GetField("isRoundEnded", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.SetValue(__instance, false);
+                
                 __result = true;
+                return false; // Skip the original CheckAlive logic
             }
+            return true;
         }
     }
 }

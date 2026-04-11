@@ -20,7 +20,7 @@ namespace Andromeda.Mod
         public static string ForcedApiUrl { get; private set; }
         public static string ChannelCode { get; private set; }
         public static string ChannelKey { get; private set; }
-        public static bool OnePlayerMode { get; private set; }
+        public static bool OnePlayerMode { get; set; }
         public static bool CheatsEnabled { get; private set; }
         public static string PartyLeaderSteamId { get; private set; }
         public static bool DebugMode { get; private set; }

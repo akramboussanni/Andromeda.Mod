@@ -53,27 +53,6 @@ namespace Andromeda.Mod.Patches
 
 
     /// <summary>
-    /// ProgramServer — Handles the initial connection handshake. 
-    /// We override the full check and the response value to respect custom MaxPlayers.
-    /// </summary>
-    [HarmonyPatch(typeof(ProgramServer), "OnJoin")]
-    public static class ProgramServerJoinPatch
-    {
-        [HarmonyPrefix]
-        public static void Prefix(ProgramServer __instance)
-        {
-            if (!DedicatedServerStartup.IsServer) return;
-            
-            // Override the gamemode's max players right before the check
-            var gamemode = Traverse.Create(__instance).Field("gamemode").GetValue();
-            if (gamemode != null)
-            {
-                Traverse.Create(gamemode).Field("maxPlayers").SetValue(DedicatedServerStartup.MaxPlayers);
-            }
-        }
-    }
-
-    /// <summary>
     /// AndromedaServer — Overrides the hardcoded 8-player limit in the game's boot sequence.
     /// </summary>
     [HarmonyPatch(typeof(AndromedaServer), "Setup")]
@@ -110,16 +89,6 @@ namespace Andromeda.Mod.Patches
             {
                 playerListMsg.maxPlayers = DedicatedServerStartup.MaxPlayers;
             }
-        }
-    }
-
-    [HarmonyPatch(typeof(ProgramClient), "Connect")]
-    public static class ProgramClientMaxPlayersPatch
-    {
-        [HarmonyPrefix]
-        public static void Prefix(ref object data)
-        {
-             // data is ApiShared.JoinData, nested, we can use reflection if needed but usually OnJoin response is what matters
         }
     }
 
