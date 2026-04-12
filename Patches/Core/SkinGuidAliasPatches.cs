@@ -16,7 +16,8 @@ namespace Andromeda.Mod.Patches
                 || string.Equals(guid, "finn", StringComparison.OrdinalIgnoreCase))
             {
                 string replacementGuid = CryonautModelFix.GetReplacementSkinGuid();
-                MelonLogger.Msg($"[CRYONAUT-DEBUG] SkinSpawnList.GetByGuid remap cryonaut -> {replacementGuid}");
+                if (CryonautModelFix.DebugLogsEnabled)
+                    MelonLogger.Msg($"[CRYONAUT-DEBUG] SkinSpawnList.GetByGuid remap cryonaut -> {replacementGuid}");
                 guid = replacementGuid;
             }
         }
@@ -41,7 +42,8 @@ namespace Andromeda.Mod.Patches
             if (key == SkinSpawnList.Key.Cryonaut)
             {
                 var replacement = CryonautModelFix.GetReplacementSkinKey();
-                MelonLogger.Msg($"[CRYONAUT-DEBUG] SkinSpawnList.Get key remap Cryonaut -> {replacement}");
+                if (CryonautModelFix.DebugLogsEnabled)
+                    MelonLogger.Msg($"[CRYONAUT-DEBUG] SkinSpawnList.Get key remap Cryonaut -> {replacement}");
                 key = replacement;
             }
         }

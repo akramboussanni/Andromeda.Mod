@@ -1,6 +1,8 @@
+using Andromeda.Mod.Features;
 using HarmonyLib;
 using MelonLoader;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -20,43 +22,9 @@ namespace Andromeda.Mod.Patches
         {
             if (paths == null) return;
 
-            int originalCount = paths.Length;
-
-            // Filter 1: Remove null/whitespace paths.
+            // Remove null/whitespace paths — LoadSceneAsync returns null for empty names,
+            // which crashes Level.LoadServer with 'Value cannot be null (asyncOperation)'.
             paths = paths.Where(p => !string.IsNullOrWhiteSpace(p)).ToArray();
-
-            // Filter 2: Remove paths not registered in the build's scene manifest.
-            // SceneManager.LoadSceneAsync returns null for unregistered scene names,
-            // which causes 'Value cannot be null (asyncOperation)' to crash Level.LoadServer.
-            var validPaths = new List<string>();
-            int sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCountInBuildSettings;
-            var registeredPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            for (int i = 0; i < sceneCount; i++)
-            {
-                string scenePath = UnityEngine.SceneManagement.SceneUtility.GetScenePathByBuildIndex(i);
-                if (!string.IsNullOrEmpty(scenePath))
-                    registeredPaths.Add(scenePath);
-            }
-
-            foreach (string p in paths)
-            {
-                // Accept if the full path matches, or if the scene name portion matches.
-                string sceneName = System.IO.Path.GetFileNameWithoutExtension(p);
-                bool found = registeredPaths.Contains(p)
-                    || registeredPaths.Any(r => string.Equals(
-                        System.IO.Path.GetFileNameWithoutExtension(r), sceneName,
-                        StringComparison.OrdinalIgnoreCase));
-                if (found)
-                    validPaths.Add(p);
-                else
-                    MelonLogger.Warning($"[SCENES] Scene path not in build manifest, skipping: '{p}'");
-            }
-
-            int filteredCount = originalCount - validPaths.Count;
-            if (filteredCount > 0)
-                MelonLogger.Warning($"[SCENES] Removed {filteredCount} invalid scene path(s) before load.");
-
-            paths = validPaths.ToArray();
         }
     }
 
@@ -140,7 +108,7 @@ namespace Andromeda.Mod.Patches
     public static class AndromedaClientServerGuardPatch
     {
         [HarmonyPrefix]
-        public static bool BlockOnServer() => !(DedicatedServerStartup.IsServer && Application.isBatchMode);
+        public static bool BlockOnServer() => !DedicatedServerStartup.IsServer;
     }
 
     [HarmonyPatch]
@@ -246,6 +214,19 @@ namespace Andromeda.Mod.Patches
     [HarmonyPatch]
     public static class ProgramServerPatch
     {
+        /// <summary>
+        /// Skips ProgramClient.Awake entirely on the dedicated server.
+        /// In headless/batch mode Screen.resolutions returns an empty array, so the
+        /// vanilla Awake crashes immediately at:
+        ///   Screen.SetResolution(Screen.resolutions[LocalUserData.ResolutionIndex].width, ...)
+        /// This stub is registered manually from Mod.cs before PatchAll runs.
+        /// </summary>
+        public static bool PrefixClientAwakeStub()
+        {
+            // Return false = skip original Awake; only skip in server mode.
+            return !(DedicatedServerStartup.IsServer || Andromeda.Mod.Patches.EnvironmentPatch.IsHost());
+        }
+
         [HarmonyPatch(typeof(ProgramServer), "Host")]
         [HarmonyPrefix]
         public static void PrefixHost(string name, GamemodeList.Key gamemodeKey)
@@ -257,7 +238,7 @@ namespace Andromeda.Mod.Patches
         [HarmonyPrefix]
         public static void PrefixOnJoin(ProgramServer __instance, PlayerId playerId, ProgramShared.JoinRequest request)
         {
-            if (!DedicatedServerStartup.IsServer) return;
+            if (!DedicatedServerStartup.IsServer && !Andromeda.Mod.Patches.EnvironmentPatch.IsHost()) return;
 
             // Handshake version bypass - ensures clients can always connect to the modded server
             if (request != null)
@@ -268,14 +249,42 @@ namespace Andromeda.Mod.Patches
                     versionField.SetValue(request, Version.Value);
                 }
             }
+
+            // Restored from 0.11.1 ProgramServerJoinPatch:
+            // Override the gamemode's max players right before the join check so that
+            // ProgramServer doesn't reject players beyond the hardcoded gamemode cap.
+            try
+            {
+                var gamemode = Traverse.Create(__instance).Field("gamemode").GetValue();
+                if (gamemode != null)
+                {
+                    Traverse.Create(gamemode).Field("maxPlayers").SetValue(DedicatedServerStartup.MaxPlayers);
+                }
+            }
+            catch { }
+
+            ForceStartFeature.OnPlayerCountChanged(GetProgramServerPlayerCount(__instance));
         }
 
         [HarmonyPatch(typeof(ProgramServer), "OnLeave")]
         [HarmonyPrefix]
         public static void PrefixOnLeave(ProgramServer __instance, PlayerId playerId)
         {
-            if (!DedicatedServerStartup.IsServer) return;
+            if (!DedicatedServerStartup.IsServer && !Andromeda.Mod.Patches.EnvironmentPatch.IsHost()) return;
             NetworkDebugger.LogLobbyEvent($"[SERVER] Player Left: {playerId}");
+            ForceStartFeature.OnPlayerCountChanged(GetProgramServerPlayerCount(__instance) - 1);
+        }
+
+        private static int GetProgramServerPlayerCount(ProgramServer instance)
+        {
+            if (instance == null) return 0;
+            try
+            {
+                var playersField = typeof(ProgramServer).GetField("players", BindingFlags.NonPublic | BindingFlags.Instance);
+                var players = playersField?.GetValue(instance) as System.Collections.IDictionary;
+                return players?.Count ?? 0;
+            }
+            catch { return 0; }
         }
     }
 

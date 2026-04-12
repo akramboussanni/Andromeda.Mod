@@ -55,7 +55,7 @@ namespace Andromeda.Mod.Patches
             {
                 string reason = "Application.Quit() called.";
                 try { reason = System.Environment.StackTrace; } catch { }
-                RestApi.SendShutdown(DedicatedServerStartup.SessionId, reason);
+                try { RestApi.SendShutdown(DedicatedServerStartup.SessionId, reason); } catch { }
             }
         }
 
@@ -67,7 +67,7 @@ namespace Andromeda.Mod.Patches
             {
                 string reason = "Application.Quit(" + exitCode + ") called.";
                 try { reason = System.Environment.StackTrace; } catch { }
-                RestApi.SendShutdown(DedicatedServerStartup.SessionId, reason);
+                try { RestApi.SendShutdown(DedicatedServerStartup.SessionId, reason); } catch { }
             }
         }
     }
@@ -75,18 +75,17 @@ namespace Andromeda.Mod.Patches
     [HarmonyPatch]
     public static class ReturnToLobbyRedirectPatch
     {
+        // Cached once — avoids per-call reflection. With publicized assembly the field is accessible
+        // via __instance.displaying, but FieldInfo caching is safe here since this fires at most once
+        // per round-end screen dismissal.
+        private static readonly System.Reflection.FieldInfo _displayingField =
+            typeof(RoundEndScreen).GetField("displaying", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
         [HarmonyPatch(typeof(RoundEndScreen), "LeaveGame")]
         [HarmonyPrefix]
         public static bool PrefixRoundEndLeave(RoundEndScreen __instance)
         {
-            try
-            {
-                var displayingField = typeof(RoundEndScreen).GetField("displaying", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (displayingField != null)
-                    displayingField.SetValue(__instance, false);
-            }
-            catch { }
-
+            try { _displayingField?.SetValue(__instance, false); } catch { }
             MainMenu.Instance.LeaveGame();
             return false;
         }

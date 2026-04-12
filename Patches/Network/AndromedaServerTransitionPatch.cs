@@ -55,7 +55,8 @@ namespace Andromeda.Mod.Patches
         [HarmonyPostfix]
         public static void PostfixSetup(AndromedaServer __instance)
         {
-            if (!DedicatedServerStartup.IsServer || __instance == null) return;
+            if (!DedicatedServerStartup.IsServer && !EnvironmentPatch.IsHost()) return;
+            if (__instance == null) return;
             ObjectivesEntered.Remove(__instance.GetInstanceID());
             Features.ForceStartFeature.OnGameServerSetup();
             MelonCoroutines.Start(SetupWatchdog(__instance));
@@ -65,7 +66,8 @@ namespace Andromeda.Mod.Patches
         [HarmonyPrefix]
         public static void PrefixObjectives(AndromedaServer __instance)
         {
-            if (!DedicatedServerStartup.IsServer || __instance == null) return;
+            if (!DedicatedServerStartup.IsServer && !EnvironmentPatch.IsHost()) return;
+            if (__instance == null) return;
             ObjectivesEntered.Add(__instance.GetInstanceID());
         }
     }

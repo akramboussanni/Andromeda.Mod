@@ -1,6 +1,5 @@
 using HarmonyLib;
 using MelonLoader;
-using UnityEngine;
 
 namespace Andromeda.Mod.Patches.Network
 {
@@ -10,7 +9,7 @@ namespace Andromeda.Mod.Patches.Network
         [HarmonyPrefix]
         public static bool Prefix(string reason)
         {
-            if (!DedicatedServerStartup.IsServer) return true;
+            if (!DedicatedServerStartup.IsServer && !Andromeda.Mod.Patches.EnvironmentPatch.IsHost()) return true;
 
             // Prevent server from quitting during startup if we are in OnePlayerMode.
             // AndromedaServer.Setup() normally quits if count < 2.
@@ -37,15 +36,14 @@ namespace Andromeda.Mod.Patches.Network
         [HarmonyPrefix]
         public static void Prefix(ProgramServer __instance)
         {
-            if (!DedicatedServerStartup.IsServer) return;
+            if (!DedicatedServerStartup.IsServer && !Andromeda.Mod.Patches.EnvironmentPatch.IsHost()) return;
+            if (!DedicatedServerStartup.OnePlayerMode) return;
 
-            // If in OnePlayerMode, reset the empty timer frequently to keep server alive 
-            // even if no one is in yet (useful for sandbox startup).
-            if (DedicatedServerStartup.OnePlayerMode)
-            {
-                Traverse.Create(__instance).Field("emptyTime").SetValue(0f);
-                Traverse.Create(__instance).Field("activeTime").SetValue(0f); // Disable max run time too
-            }
+            // Keep the server alive indefinitely in OnePlayerMode by resetting the
+            // empty-room timer and the max-run-time timer before ProgramServer.Update
+            // can read them. Direct field access via publicized assembly — no reflection.
+            __instance.emptyTime = 0f;
+            __instance.activeTime = 0f;
         }
     }
 }

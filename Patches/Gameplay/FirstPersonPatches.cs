@@ -13,13 +13,6 @@ namespace Andromeda.Mod.Patches
     [HarmonyPatch]
     public static class FirstPersonCameraPatch
     {
-        private static readonly FieldInfo CameraField = AccessTools.Field(typeof(CameraController), "cam");
-        private static readonly FieldInfo YawField = AccessTools.Field(typeof(CameraController), "yaw");
-        private static readonly MethodInfo SetProbeMethod = AccessTools.Method(typeof(CameraController), "SetProbe", new[] { typeof(Vector3), typeof(Quaternion?) });
-        private static readonly FieldInfo CursorPositionField = AccessTools.Field(typeof(LockableCursorInputModule), "position");
-        private static readonly FieldInfo DirectionalCursorImageField = AccessTools.Field(typeof(DirectionalCursor), "cursor");
-        private static readonly FieldInfo DirectionalCursorWorldField = AccessTools.Field(typeof(DirectionalCursor), "worldSpaceCursor");
-
         private const float EyeHeight = 1.55f;
         private const float MaxPitchAngle = 32f;
         private const float PitchSensitivityScale = 0.75f;
@@ -65,7 +58,8 @@ namespace Andromeda.Mod.Patches
                     if (!LockableCursorInputModule.Locked)
                         LockableCursorInputModule.Locked = true;
 
-                    CursorPositionField?.SetValue(cursorModule, new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f));
+                    // Direct field access via publicized assembly — no reflection overhead.
+                    cursorModule.position = new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f);
                 }
 
                 Cursor.lockState = CursorLockMode.Locked;
@@ -192,24 +186,22 @@ namespace Andromeda.Mod.Patches
                 HideLocalPlayerVisuals(localGo);
                 FirstPersonHudOverlay.UpdateLocalOverhead(localGo);
 
-                float yaw = (float)(YawField?.GetValue(__instance) ?? 0f);
-                yaw += ReadMouseYawInput() * ClientSettings.FirstPersonYawSensitivity.Value;
-                YawField?.SetValue(__instance, yaw);
+                // Direct field access via publicized assembly — no per-frame reflection.
+                __instance.yaw += ReadMouseYawInput() * ClientSettings.FirstPersonYawSensitivity.Value;
 
                 _pitch -= ReadMousePitchInput() * ClientSettings.FirstPersonYawSensitivity.Value * PitchSensitivityScale;
                 _pitch = Mathf.Clamp(_pitch, -MaxPitchAngle, MaxPitchAngle);
 
-                var cam = CameraField?.GetValue(__instance) as Camera;
+                var cam = __instance.cam;
                 if ((UnityEngine.Object)cam == (UnityEngine.Object)null) return true;
 
                 var eyePos = localGo.transform.position + Vector3.up * EyeHeight;
-                var lookRot = Quaternion.Euler(_pitch, yaw, 0f);
-                var forward = lookRot * Vector3.forward;
+                var lookRot = Quaternion.Euler(_pitch, __instance.yaw, 0f);
 
                 cam.transform.position = eyePos;
-                cam.transform.forward = forward;
+                cam.transform.forward = lookRot * Vector3.forward;
 
-                SetProbeMethod?.Invoke(__instance, new object[] { eyePos, new Quaternion?(cam.transform.rotation) });
+                __instance.SetProbe(eyePos, cam.transform.rotation);
                 return false;
             }
             catch
@@ -238,24 +230,21 @@ namespace Andromeda.Mod.Patches
                 HideLocalPlayerVisuals(localGo);
                 FirstPersonHudOverlay.UpdateLocalOverhead(localGo);
 
-                float yaw = (float)(YawField?.GetValue(__instance) ?? 0f);
-                yaw += ReadMouseYawInput() * ClientSettings.FirstPersonYawSensitivity.Value;
-                YawField?.SetValue(__instance, yaw);
+                // Direct field access via publicized assembly — no per-frame reflection.
+                __instance.yaw += ReadMouseYawInput() * ClientSettings.FirstPersonYawSensitivity.Value;
 
                 _pitch -= ReadMousePitchInput() * ClientSettings.FirstPersonYawSensitivity.Value * PitchSensitivityScale;
                 _pitch = Mathf.Clamp(_pitch, -MaxPitchAngle, MaxPitchAngle);
 
-                var cam = CameraField?.GetValue(__instance) as Camera;
+                var cam = __instance.cam;
                 if ((UnityEngine.Object)cam == (UnityEngine.Object)null) return true;
 
                 var eyePos = localGo.transform.position + Vector3.up * EyeHeight;
-                var lookRot = Quaternion.Euler(_pitch, yaw, 0f);
-                var forward = lookRot * Vector3.forward;
 
                 cam.transform.position = eyePos;
-                cam.transform.forward = forward;
+                cam.transform.forward = Quaternion.Euler(_pitch, __instance.yaw, 0f) * Vector3.forward;
 
-                SetProbeMethod?.Invoke(__instance, new object[] { eyePos, new Quaternion?(cam.transform.rotation) });
+                __instance.SetProbe(eyePos, cam.transform.rotation);
                 return false;
             }
             catch
@@ -282,7 +271,6 @@ namespace Andromeda.Mod.Patches
                 var localGo = local.Item1.GetGameObject();
                 if ((UnityEngine.Object)localGo == (UnityEngine.Object)null) return true;
 
-                // Mouse Y only affects camera pitch, not gameplay aim.
                 Vector3 planarForward = Vector3.ProjectOnPlane(cam.transform.forward, Vector3.up);
                 if (planarForward.sqrMagnitude < 0.0001f)
                     planarForward = Vector3.ProjectOnPlane(localGo.transform.forward, Vector3.up);
@@ -296,8 +284,8 @@ namespace Andromeda.Mod.Patches
                 if (new Plane(Vector3.up, Vector3.up * 1.3f).Raycast(ray, out enter))
                     end = ray.GetPoint(enter);
 
-                var settingsField = AccessTools.Field(typeof(CursorTargeterShared), "settings");
-                var settings = settingsField?.GetValue(__instance) as CursorTargeterSettings;
+                // Direct field access via publicized assembly.
+                var settings = __instance.settings;
                 if (settings != null && settings.intersectsTerrain)
                 {
                     RaycastHit hitInfo;
@@ -324,13 +312,12 @@ namespace Andromeda.Mod.Patches
 
             try
             {
-                var cursorImage = DirectionalCursorImageField?.GetValue(__instance) as UnityEngine.UI.Image;
-                if (cursorImage != null)
-                    cursorImage.gameObject.SetActive(false);
+                // Direct field access via publicized assembly.
+                if (__instance.cursor != null)
+                    __instance.cursor.gameObject.SetActive(false);
 
-                var worldCursor = DirectionalCursorWorldField?.GetValue(__instance) as GameObject;
-                if (worldCursor != null)
-                    worldCursor.SetActive(false);
+                if (__instance.worldSpaceCursor != null)
+                    __instance.worldSpaceCursor.SetActive(false);
             }
             catch { }
 

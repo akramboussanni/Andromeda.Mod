@@ -15,7 +15,8 @@ namespace Andromeda.Mod.Patches
             CryonautModelFix.ApplyToApiData();
             var replacement = CryonautModelFix.GetReplacementSkinKey();
             skinKey = replacement;
-            MelonLogger.Msg($"[CRYONAUT-DEBUG] CharacterClassTab.DisplayDetails forced skinKey={replacement}");
+            if (CryonautModelFix.DebugLogsEnabled)
+                MelonLogger.Msg($"[CRYONAUT-DEBUG] CharacterClassTab.DisplayDetails forced skinKey={replacement}");
         }
     }
 }

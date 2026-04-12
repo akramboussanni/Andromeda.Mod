@@ -8,7 +8,7 @@ namespace Andromeda.Mod.Patches
     {
         private const string CryonautGuid = "cryonaut";
         private const string FinnGuid = "finn";
-        private static readonly bool DebugLogsEnabled = false;
+        internal static readonly bool DebugLogsEnabled = false;
 
         public static SkinSpawnList.Key GetReplacementSkinKey()
         {
