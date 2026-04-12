@@ -125,13 +125,6 @@ namespace Andromeda.Mod.Features.TextChatCommands
                 return fetched.Item2 && fetched.Item1.steamId == DedicatedServerStartup.PartyLeaderSteamId;
             }
 
-            // Listen server after lobby teardown: use cached leader from before transition
-            if (LobbySettingsReplicationFeature.CachedLeaderId.HasValue)
-            {
-                MelonLogger.Msg($"[CHAT-CMD] IsPartyLeader: cached leader={LobbySettingsReplicationFeature.CachedLeaderId} sender={sender}");
-                return LobbySettingsReplicationFeature.CachedLeaderId.Value == sender;
-            }
-
             MelonLogger.Msg($"[CHAT-CMD] IsPartyLeader: no leader source found for sender={sender}");
             return false;
         }

@@ -10,9 +10,6 @@ namespace Andromeda.Mod.Features
 {
     public static class ForceStartFeature
     {
-        private static bool _singlePlayerLimboActive;
-
-        public static bool IsSinglePlayerLimboActive => _singlePlayerLimboActive;
         public static bool ForceStartTriggered { get; internal set; }
 
         public static bool ConsumeForceStart()

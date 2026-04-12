@@ -34,7 +34,6 @@ namespace Andromeda.Mod.Features
                 ttlSeconds = ttlSeconds,
                 source = source ?? "unknown",
                 cheatsEnabled = cheatsEnabled ?? Andromeda.Mod.Settings.AndromedaSettings.CheatsEnabled.Value,
-                partyLeaderSteamId = Features.LobbySettingsReplicationFeature.CachedLeaderSteamId
             };
 
             string json = JsonConvert.SerializeObject(body);

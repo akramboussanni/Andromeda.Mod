@@ -40,8 +40,7 @@ namespace Andromeda.Mod
                 MelonLogger.Msg("[STARTUP] --debug detected. Verbose debug logging enabled for this server process.");
             }
 
-            LobbySettingsSystem.Initialize();
-            LobbySettingsReplicationFeature.Initialize();
+
             Features.TextChatCommands.TextChatCommandSystem.Initialize();
 
             PatchServiceAddress();
@@ -185,8 +184,6 @@ namespace Andromeda.Mod
             NetworkDebugger.Update();
             DedicatedServerStartup.Update();
             Networking.Messaging.NetworkMessageService.Update();
-            LobbySettingsReplicationFeature.Update();
-            UiDiscoveryDumpFeature.Update();
         }
 
         public override void OnGUI()

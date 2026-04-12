@@ -14,11 +14,20 @@ namespace Andromeda.Mod.Patches
 
         [HarmonyPatch(typeof(AndromedaClient), "OnLoadLevel")]
         [HarmonyPrefix]
-        public static void ResetPhaseGate()
+        public static void ResetPhaseGateAndArmory()
         {
             _lastPhaseHandled = AndromedaShared.RoundPhase.None;
             _lastPhaseTimeReceivedAt = -999f;
             _initialPhaseAdvanceApplied = false;
+            
+            // From EarlyArmoryItemGuard
+            EarlyArmoryItemGuard._armoryReachedThisRound = false;
+            EarlyArmoryItemGuard._generatorPhaseReachedThisRound = false;
+            EarlyArmoryItemGuard._cheatLockActiveThisRound = false;
+            EarlyArmoryItemGuard._alertPlayedThisRound = false;
+            EarlyArmoryItemGuard._warningUntil = -1f;
+            GameInput.IsBlockedCinematic = false;
+            
             ForceStartFeature.OnLoadLevel();
         }
 
@@ -28,6 +37,14 @@ namespace Andromeda.Mod.Patches
         {
             if ((UnityEngine.Object)__instance == (UnityEngine.Object)null) return true;
 
+            // Tracking from EarlyArmoryItemGuard
+            if (__instance.Phase == AndromedaShared.RoundPhase.Crisis)
+                EarlyArmoryItemGuard._generatorPhaseReachedThisRound = true;
+
+            if (__instance.Phase == AndromedaShared.RoundPhase.Armory)
+                EarlyArmoryItemGuard._armoryReachedThisRound = true;
+
+            // Logic from AndromedaPhaseClockDesyncPatch
             var currentPhase = __instance.Phase;
             bool samePhase = currentPhase == _lastPhaseHandled;
             bool recentUpdate = Time.time - _lastPhaseTimeReceivedAt < 2.0f;
@@ -72,12 +89,12 @@ namespace Andromeda.Mod.Patches
     [HarmonyPatch]
     public static class EarlyArmoryItemGuard
     {
-        private static float _warningUntil;
+        public static float _warningUntil;
         private static GUIStyle _warningStyle;
-        private static bool _armoryReachedThisRound;
-        private static bool _generatorPhaseReachedThisRound;
-        private static bool _cheatLockActiveThisRound;
-        private static bool _alertPlayedThisRound;
+        public static bool _armoryReachedThisRound;
+        public static bool _generatorPhaseReachedThisRound;
+        public static bool _cheatLockActiveThisRound;
+        public static bool _alertPlayedThisRound;
         private const float VerticalExploitThresholdY = 0.5f;
 
         private static readonly HashSet<ItemSpawnList.Key> EarlyArmoryRestrictedItems = new HashSet<ItemSpawnList.Key>
@@ -173,31 +190,6 @@ namespace Andromeda.Mod.Patches
 
             TriggerWarning();
             return false;
-        }
-
-        [HarmonyPatch(typeof(AndromedaClient), "OnLoadLevel")]
-        [HarmonyPrefix]
-        public static void ResetRoundArmoryState()
-        {
-            _armoryReachedThisRound = false;
-            _generatorPhaseReachedThisRound = false;
-            _cheatLockActiveThisRound = false;
-            _alertPlayedThisRound = false;
-            _warningUntil = -1f;
-            GameInput.IsBlockedCinematic = false;
-        }
-
-        [HarmonyPatch(typeof(AndromedaClient), "OnPhaseTime")]
-        [HarmonyPrefix]
-        public static void TrackArmoryReached(AndromedaClient __instance)
-        {
-            if ((UnityEngine.Object)__instance == (UnityEngine.Object)null) return;
-
-            if (__instance.Phase == AndromedaShared.RoundPhase.Crisis)
-                _generatorPhaseReachedThisRound = true;
-
-            if (__instance.Phase == AndromedaShared.RoundPhase.Armory)
-                _armoryReachedThisRound = true;
         }
 
         public static void DrawWarningOverlay()
