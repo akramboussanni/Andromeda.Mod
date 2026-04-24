@@ -6,8 +6,9 @@ using System.Reflection;
 using System.Reflection.Emit;
 using Windwalk.Net;
 using UnityEngine;
+using Andromeda.Mod.Patches;
 
-namespace Andromeda.Mod.Patches
+namespace Andromeda.Mod.Patches.GameSession
 {
     // ---------------------------------------------------------------------------
     // CustomPartyServer patches — log the "start game" handoff to a match server
@@ -40,8 +41,8 @@ namespace Andromeda.Mod.Patches
         [HarmonyPrefix]
         public static void Prefix(ref int? __0)
         {
-            if (!DedicatedServerStartup.IsServer && !Andromeda.Mod.Patches.EnvironmentPatch.IsHost()) return;
-            
+            if (!DedicatedServerStartup.IsServer && !EnvironmentPatch.IsHost()) return;
+
             int configured = DedicatedServerStartup.MaxPlayers;
             if (configured != 8)
             {
@@ -53,7 +54,7 @@ namespace Andromeda.Mod.Patches
 
 
     /// <summary>
-    /// ProgramServer — Handles the initial connection handshake. 
+    /// ProgramServer — Handles the initial connection handshake.
     /// We override the full check and the response value to respect custom MaxPlayers.
     /// </summary>
     [HarmonyPatch(typeof(ProgramServer), "OnJoin")]
@@ -63,7 +64,7 @@ namespace Andromeda.Mod.Patches
         public static void Prefix(ProgramServer __instance)
         {
             if (!DedicatedServerStartup.IsServer) return;
-            
+
             // Override the gamemode's max players right before the check
             var gamemode = Traverse.Create(__instance).Field("gamemode").GetValue();
             if (gamemode != null)
@@ -103,7 +104,7 @@ namespace Andromeda.Mod.Patches
         [HarmonyPrefix]
         public static void Prefix(Entity.Message entityMsg)
         {
-            if (!Andromeda.Mod.Patches.EnvironmentPatch.IsHost()) return;
+            if (!EnvironmentPatch.IsHost()) return;
 
             var playerListMsg = entityMsg.ReadBody<LobbyShared.PlayerListMsg>();
             if (playerListMsg != null)

@@ -10,7 +10,7 @@ using UnityEngine.Networking;
 using Windwalk.Net;
 using MelonLoader;
 
-namespace Andromeda.Mod.Patches
+namespace Andromeda.Mod.Patches.Ui
 {
     internal static class NameColorTempDebug
     {
@@ -44,7 +44,7 @@ namespace Andromeda.Mod.Patches
                     NameColorTempDebug.Log($"ParseResponse hit: {request.url}");
                     var json = JObject.Parse(request.downloadHandler.text);
                     var data = json["data"];
-                    
+
                     if (data == null)
                     {
                         NameColorTempDebug.Log("ParseResponse data field missing.");

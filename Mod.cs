@@ -4,6 +4,10 @@ using MelonLoader;
 using HarmonyLib;
 using UnityEngine;
 using Andromeda.Mod.Patches;
+using Andromeda.Mod.Patches.Cryonaut;
+using Andromeda.Mod.Patches.GameSession;
+using Andromeda.Mod.Patches.Network;
+using Andromeda.Mod.Patches.Server;
 using Andromeda.Mod.Features;
 
 namespace Andromeda.Mod
@@ -88,7 +92,7 @@ namespace Andromeda.Mod
             // 1. HARD-TARGET: ProgramClient.Awake Bypass (Fixes Screen.resolutions crash) 
             try {
                 var clientAwake = AccessTools.Method(typeof(ProgramClient), "Awake");
-                var prefix = AccessTools.Method(typeof(Patches.ProgramServerPatch), "PrefixClientAwakeStub");
+                var prefix = AccessTools.Method(typeof(ProgramServerPatch), "PrefixClientAwakeStub");
                 if (clientAwake != null && prefix != null) {
                     harmony.Patch(clientAwake, new HarmonyMethod(prefix));
                     MelonLogger.Msg("[PATCH] ProgramClient.Awake Crash Bypass - HARD-LINK OK");
@@ -131,7 +135,7 @@ namespace Andromeda.Mod
             // method is compiler-generated (MoveNext), not the outer Setup method.
             try
             {
-                Andromeda.Mod.Patches.AndromedaServerMinPlayerPatch.Apply(harmony);
+                AndromedaServerMinPlayerPatch.Apply(harmony);
             }
             catch (Exception ex)
             {
@@ -140,7 +144,7 @@ namespace Andromeda.Mod
 
             try
             {
-                Andromeda.Mod.Patches.AndromedaServerMaxPlayerPatch.Apply(harmony);
+                AndromedaServerMaxPlayerPatch.Apply(harmony);
             }
             catch (Exception ex)
             {
@@ -179,7 +183,7 @@ namespace Andromeda.Mod
         {
             SteamLinkRequestsMenu.OnGUI();
             NetworkDebugger.OnGUI();
-            Andromeda.Mod.Patches.EarlyArmoryItemGuard.DrawWarningOverlay();
+            EarlyArmoryItemGuard.DrawWarningOverlay();
             Features.UpdateChecker.OnGUI();
         }
 

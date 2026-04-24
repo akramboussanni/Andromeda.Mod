@@ -480,9 +480,18 @@
         <Compile Include="Patches\UserStorePatch.cs" />
         <Compile Include="Patches\EnvironmentPatch.cs" />
         <Compile Include="Patches\LogRedirectPatch.cs" />
-        <Compile Include="Patches\MiscPatches.cs" />
-        <Compile Include="Patches\NetworkPatches.cs" />
-        <Compile Include="Patches\GameSessionPatches.cs" />
+        <Compile Include="Patches\Cryonaut\CryonautHelpers.cs" />
+        <Compile Include="Patches\Cryonaut\CryonautUiPatches.cs" />
+        <Compile Include="Patches\Cryonaut\SkinPatches.cs" />
+        <Compile Include="Patches\GameSession\GameSessionPatches.cs" />
+        <Compile Include="Patches\Network\EntityMessagingPatches.cs" />
+        <Compile Include="Patches\Network\SafetyPatches.cs" />
+        <Compile Include="Patches\Network\GameStatePatches.cs" />
+        <Compile Include="Patches\Server\ProgramServerPatches.cs" />
+        <Compile Include="Patches\Server\GameliftPatches.cs" />
+        <Compile Include="Patches\Lobby\LobbyPatches.cs" />
+        <Compile Include="Patches\Ui\MiscUiPatches.cs" />
+        <Compile Include="Patches\Ui\PlayerNameColorPatches.cs" />
         <Compile Include="Properties\AssemblyInfo.cs" />
     </ItemGroup>
     <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
