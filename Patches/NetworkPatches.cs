@@ -148,6 +148,9 @@ namespace Andromeda.Mod.Patches
     [HarmonyPatch(typeof(Entity.Base), "SendReliableToRoom")]
     public static class EntityBaseSendReliableToRoomPatch
     {
+        // The macOS client has no room-broadcast method; keep other patches loading.
+        public static bool Prepare() => AccessTools.Method(typeof(Entity.Base), "SendReliableToRoom") != null;
+
         private static NetServer _cachedServer;
         private static readonly Entity.Message _cachedMsg = new Entity.Message();
 
@@ -196,6 +199,9 @@ namespace Andromeda.Mod.Patches
     [HarmonyPatch(typeof(Entity.Base), "SendUnreliableToRoom")]
     public static class EntityBaseSendUnreliableToRoomPatch
     {
+        // The macOS client has no room-broadcast method; keep other patches loading.
+        public static bool Prepare() => AccessTools.Method(typeof(Entity.Base), "SendUnreliableToRoom") != null;
+
         private static NetServer _cachedServer;
         private static readonly Entity.Message _cachedMsg = new Entity.Message();
 
@@ -667,8 +673,10 @@ namespace Andromeda.Mod.Patches
         [HarmonyPrefix]
         public static void Prefix(ref ApiShared.JoinData data)
         {
-            // If the client joins and we're in special server mode, ensure the join response object itself is patched
-            // though usually this is handled via response.maxPlayers in the Task return.
+            string localIp = NetworkDebugger.LocalJoinIp;
+            if (localIp == null) return;
+            MelonLogger.Msg($"[LAN-JOIN] Routing join to {localIp}:{data.port} (local IP override).");
+            data.ipAddress = localIp;
         }
     }
 

@@ -41,6 +41,28 @@ namespace Andromeda.Mod
         public static string LogHost => _logIpInput;
         private static string _lobbySizeInput = "12";
         private static bool _upnpEnabled = false; // Disabled by default
+        private static bool _localJoinEnabled = false;
+        private static string _localJoinIpInput = "127.0.0.1";
+
+        public static string LocalJoinIp => _localJoinEnabled && IsLocalJoinIp(_localJoinIpInput)
+            ? _localJoinIpInput.Trim() : null;
+
+        private static bool IsLocalJoinIp(string value)
+        {
+            // Accept private IPv4 or loopback only; ports still come from the join response.
+            string[] parts = (value ?? string.Empty).Trim().Split('.');
+            if (parts.Length != 4) return false;
+            byte[] bytes = new byte[4];
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (parts[i].Length == 0 || parts[i].Length > 3) return false;
+                foreach (char c in parts[i]) if (c < '0' || c > '9') return false;
+                if (!byte.TryParse(parts[i], out bytes[i])) return false;
+            }
+            return bytes[0] == 10 || bytes[0] == 127 ||
+                (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) ||
+                (bytes[0] == 192 && bytes[1] == 168);
+        }
         private static string _publicIp = "Fetching...";
         private static bool _showPublicIp = false; // Hidden by default as requested
 
@@ -170,6 +192,8 @@ namespace Andromeda.Mod
             _apiUrlInput = PlayerPrefs.GetString("Andromeda_ApiUrl", RestApi.API_URL);
             _lobbySizeInput = PlayerPrefs.GetString("Andromeda_LobbySize", "12");
             _upnpEnabled = PlayerPrefs.GetInt("Andromeda_UpnpEnabled", 0) == 1;
+            _localJoinIpInput = PlayerPrefs.GetString("Andromeda_LocalJoinIp", "127.0.0.1");
+            _localJoinEnabled = PlayerPrefs.GetInt("Andromeda_LocalJoinEnabled", 0) == 1;
             _showPublicIp = PlayerPrefs.GetInt("Andromeda_ShowPublicIp", 0) == 1;
 
             if (int.TryParse(_lobbySizeInput, out int mp) && mp >= 2)
@@ -233,6 +257,8 @@ namespace Andromeda.Mod
             PlayerPrefs.SetString("Andromeda_LogPort", _logPortInput);
             PlayerPrefs.SetString("Andromeda_LobbySize", _lobbySizeInput);
             PlayerPrefs.SetInt("Andromeda_UpnpEnabled", _upnpEnabled ? 1 : 0);
+            PlayerPrefs.SetString("Andromeda_LocalJoinIp", _localJoinIpInput.Trim());
+            PlayerPrefs.SetInt("Andromeda_LocalJoinEnabled", _localJoinEnabled ? 1 : 0);
             PlayerPrefs.SetInt("Andromeda_ShowPublicIp", _showPublicIp ? 1 : 0);
             PlayerPrefs.Save();
 

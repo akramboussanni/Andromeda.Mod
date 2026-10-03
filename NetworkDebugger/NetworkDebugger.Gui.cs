@@ -175,6 +175,17 @@ namespace Andromeda.Mod
             _upnpEnabled = GUILayout.Toggle(_upnpEnabled, "Enable UPnP Port Forwarding");
             GUILayout.EndHorizontal();
 
+            GUILayout.Space(10);
+            GUILayout.Label("Local Server Join (NAT Loopback Workaround)", GUI.skin.box);
+            _localJoinEnabled = GUILayout.Toggle(_localJoinEnabled, "Force local server IP for all joins");
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Server LAN IP:", GUILayout.Width(120));
+            _localJoinIpInput = GUILayout.TextField(_localJoinIpInput);
+            GUILayout.EndHorizontal();
+            GUILayout.Label("Use the server's Wi-Fi/LAN IP (e.g. 192.168.1.50), or 127.0.0.1 if the server runs on this computer. Applies to the next join; keeps the assigned port. Disable for internet servers.");
+            if (_localJoinEnabled && !IsLocalJoinIp(_localJoinIpInput))
+                GUILayout.Label("Enter a valid private IPv4 or loopback address without a port. Override is inactive until valid.");
+
             if (GUILayout.Button("SAVE SETTINGS", GUILayout.Height(30)))
             {
                 SaveSettings();
