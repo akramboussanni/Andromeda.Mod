@@ -41,7 +41,7 @@ jobs:
           if (-not [string]::IsNullOrWhiteSpace($env:GAME_MANAGED_ZIP_TOKEN)) {
             $managedZipHeaders['Authorization'] = "Bearer $env:GAME_MANAGED_ZIP_TOKEN"
           }
-          Invoke-WebRequest -Uri $env:GAME_MANAGED_ZIP_URL -Headers $managedZipHeaders -OutFile $managedZip
+          Invoke-WebRequest -Uri $env:GAME_MANAGED_ZIP_URL -Headers $managedZipHeaders -OutFile $managedZip -MaximumRetryCount 3 -RetryIntervalSec 10
           Expand-Archive -Path $managedZip -DestinationPath "$env:GAME_MANAGED_DIR" -Force
 
           $melonDlls = @('MelonLoader.dll', '0Harmony.dll', 'Newtonsoft.Json.dll')

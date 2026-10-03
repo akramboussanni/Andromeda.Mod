@@ -5,6 +5,11 @@ on:
     tags:
       - '*.*.*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -20,6 +25,26 @@ jobs:
       GAME_MANAGED_ZIP_TOKEN: ${{ secrets.ANDROMEDA_GAME_MANAGED_ZIP_TOKEN }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Validate release version
+        id: version
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tagVersion = $env:RELEASE_TAG -replace '^v', ''
+          $source = Get-Content BuildInfo.cs -Raw
+          if ($tagVersion -notmatch '^\d+\.\d+\.\d+$' -or $source -notmatch 'Version\s*=\s*"([^" ]+)"') {
+            throw 'Expected a semantic release tag and a BuildInfo.Version constant.'
+          }
+          if ($Matches[1] -ne $tagVersion) {
+            throw "Release tag $env:RELEASE_TAG does not match BuildInfo.Version $($Matches[1])."
+          }
+          "tag=$env:RELEASE_TAG" >> $env:GITHUB_OUTPUT
+          "version=$tagVersion" >> $env:GITHUB_OUTPUT
 
       - name: Setup dotnet
         uses: actions/setup-dotnet@v5
@@ -43,7 +68,7 @@ jobs:
           if (-not [string]::IsNullOrWhiteSpace($env:GAME_MANAGED_ZIP_TOKEN)) {
             $managedZipHeaders['Authorization'] = "Bearer $env:GAME_MANAGED_ZIP_TOKEN"
           }
-          Invoke-WebRequest -Uri $env:GAME_MANAGED_ZIP_URL -Headers $managedZipHeaders -OutFile $managedZip
+          Invoke-WebRequest -Uri $env:GAME_MANAGED_ZIP_URL -Headers $managedZipHeaders -OutFile $managedZip -MaximumRetryCount 3 -RetryIntervalSec 10
           Expand-Archive -Path $managedZip -DestinationPath "$env:GAME_MANAGED_DIR" -Force
 
           $melonDlls = @('MelonLoader.dll', '0Harmony.dll', 'Newtonsoft.Json.dll')
@@ -90,6 +115,20 @@ jobs:
       - name: Build Release
         run: dotnet msbuild "$env:PROJECT_PATH" /t:Build /p:Configuration=Release /nologo
 
+      - name: Verify compiled version metadata
+        shell: pwsh
+        env:
+          EXPECTED_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dll = (Resolve-Path 'bin/Release/Andromeda.Mod.dll').Path
+          $expected = [Version]"$env:EXPECTED_VERSION.0"
+          $assemblyVersion = [Reflection.AssemblyName]::GetAssemblyName($dll).Version
+          $fileVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($dll).FileVersion
+          if ($assemblyVersion -ne $expected -or [Version]$fileVersion -ne $expected) {
+            throw "Compiled DLL version mismatch: assembly=$assemblyVersion file=$fileVersion expected=$expected"
+          }
+
       - name: Package release asset
         shell: pwsh
         run: |
@@ -100,5 +139,6 @@ jobs:
       - name: Upload GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
           files: |
             out/Andromeda.Mod.dll
