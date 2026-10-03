@@ -81,8 +81,23 @@ jobs:
             }
           }
 
-          if (-not (Test-Path (Join-Path $env:GAME_MANAGED_DIR 'Assembly-CSharp-Publicized.dll'))) {
-            throw 'Assembly-CSharp-Publicized.dll not found in managed dependency zip.'
+          $rawAssembly = Join-Path $env:GAME_MANAGED_DIR 'Assembly-CSharp.dll'
+          $publicizedAssembly = Join-Path $env:GAME_MANAGED_DIR 'Assembly-CSharp-Publicized.dll'
+          if (Test-Path $rawAssembly) {
+            $toolDir = Join-Path $env:RUNNER_TEMP 'assembly-publicizer-tools'
+            dotnet tool install BepInEx.AssemblyPublicizer.Cli --version 0.4.3 --tool-path $toolDir
+            if ($LASTEXITCODE -ne 0) { throw 'Could not install the assembly publicizer.' }
+            $previousRollForward = $env:DOTNET_ROLL_FORWARD
+            try {
+              $env:DOTNET_ROLL_FORWARD = 'LatestMajor'
+              & (Join-Path $toolDir 'assembly-publicizer.exe') $rawAssembly --output $publicizedAssembly
+              if ($LASTEXITCODE -ne 0) { throw 'Assembly-CSharp publicizing failed.' }
+            } finally {
+              $env:DOTNET_ROLL_FORWARD = $previousRollForward
+            }
+          }
+          if (-not (Test-Path $publicizedAssembly)) {
+            throw 'Neither Assembly-CSharp.dll nor Assembly-CSharp-Publicized.dll was supplied in the managed dependency zip.'
           }
 
       - name: Build Release
